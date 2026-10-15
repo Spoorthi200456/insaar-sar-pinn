@@ -27,8 +27,14 @@ textbook result each step relies on. Never skip steps.
 - Residual must be:  r = S_s ∂h/∂t − ∇·(K ∇h) − Q
 - Deformation coupling: TODO — write the exact relation, the coefficient's
   name and units (it is NOT the dimensionless Biot α if it maps head [m] to displacement [cm]).
-- LOS sign convention: TODO (e.g. "positive = motion toward satellite").
-  Incidence angle handling: TODO.
+- LOS sign convention: positive = motion toward the satellite.
+  (provisional, confirm against data source)
+  CONFLICT, not yet resolved: `src/data/schemas.py:107` documents
+  `los_displacement_cm` as "positive = uplift", which is a vertical
+  convention, not a LOS one. Code not changed; see docs/review.md finding 2.
+  Incidence angle handling: per-structure input θ taken from the Sentinel-1
+  product metadata (roughly 29–46° in IW mode), not a constant.
+  (provisional, confirm against data source) Not yet used in code.
 
 ## Units table (every physical tensor must appear here)
 | quantity | symbol | units | where |

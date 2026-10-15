@@ -5,12 +5,14 @@ import torch
 
 from src.data.dataset import ARSDataset, build_dataloader, make_collate_fn
 from src.data.preprocessing import (
+    aggregate_rainfall_to_insar_cadence,
     build_adjacency_matrix,
     clamp_displacement,
     clamp_rainfall,
     interpolate_missing_1d,
     time_deltas_days,
 )
+from src.data.schemas import DataQualityFlag, SARObservation
 
 
 class TestPreprocessing:
@@ -55,6 +57,21 @@ class TestPreprocessing:
         assert np.allclose(np.diag(adj), 0.0)
         assert adj[0, 2] == 0.0  # far apart -> no edge
 
+    def test_rainfall_binned_causally_and_rain_after_last_acquisition_dropped(self):
+        # Acquisitions at t = 0, 10, 20; step k must get rain in (t_{k-1}, t_k].
+        insar_ts = np.array([0.0, 10.0, 20.0])
+        rain_ts = np.array([0.0, 5.0, 10.0, 11.0, 25.0])
+        rain_mm = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+        binned = aggregate_rainfall_to_insar_cadence(rain_ts, rain_mm, insar_ts)
+        # t=0 -> step 0; t=5,10 -> step 1 (t=10 is ON acquisition 1, so it counts
+        # for it); t=11 -> step 2 (it fell after acquisition 1, so it cannot
+        # have caused the displacement observed at acquisition 1).
+        assert np.allclose(binned, [1.0, 5.0, 4.0])
+        # Rain at t=25 fell after the last acquisition: it is DROPPED (not
+        # flagged, not returned) and must NOT be added to the last bin.
+        assert binned[-1] == 4.0
+        assert binned.sum() == rain_mm.sum() - 5.0
+
 
 class TestARSDataset:
     def test_item_shapes(self, synthetic_records):
@@ -72,6 +89,24 @@ class TestARSDataset:
         assert sample.displacement_cm.shape == (64,)
         # first entries should be padding -> masked False
         assert sample.coherence_mask[0].item() is False
+
+    def test_clamped_observation_is_not_a_reliable_target(self, small_records):
+        record = small_records[0]
+        sar = sorted(record.sar_series, key=lambda o: o.timestamp)
+        k = 3
+        # A real -14 cm event at high coherence: the schema stores -9.999 and
+        # flags it OUT_OF_BOUNDS_CLAMPED, so it must not be fitted as truth.
+        sar[k] = SARObservation(
+            structure_id=sar[k].structure_id,
+            timestamp=sar[k].timestamp,
+            los_displacement_cm=-14.0,
+            coherence=0.9,
+        )
+        assert sar[k].quality_flag == DataQualityFlag.OUT_OF_BOUNDS_CLAMPED
+        record = record.model_copy(update={"sar_series": sar})
+
+        sample = ARSDataset([record], sequence_length=len(sar))[0]
+        assert sample.coherence_mask[k].item() is False
 
     def test_len_matches_records(self, synthetic_records):
         dataset = ARSDataset(synthetic_records, sequence_length=16)
