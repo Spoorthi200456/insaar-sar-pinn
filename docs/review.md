@@ -9,9 +9,9 @@ whether an ARS is recharging or failing?), not by file order.
 
 | # | Where | Short title | Status |
 |---|---|---|---|
-| 1 | `src/models/losses.py:130` | PDE residual has wrong sign — recharge acts as a sink | **Open** (next: plan mode) |
+| 1 | `src/models/losses.py:130` | PDE residual has wrong sign — recharge acts as a sink | **Fixed** |
 | 2 | `src/models/network.py:182` | Deformation coupling: wrong sign, wrong coefficient, no LOS projection | Open |
-| 3 | `src/models/losses.py:123-125` | Storage term has no S_s and no ÷Δt | **Open** (next: plan mode) |
+| 3 | `src/models/losses.py:123-125` | Storage term has no S_s and no ÷Δt | **Fixed** (integrator Δt still open) |
 | 4 | `src/data/dataset.py:214-228` | Physics graph built from minibatch composition | Open |
 | 5 | `src/models/layers.py:126-135` | GAT has no self-loop — isolated nodes get zero embedding | Open |
 | 6 | `src/models/losses.py:147-159` | Q compared against m³/day and against mm | Open |
@@ -20,7 +20,9 @@ whether an ARS is recharging or failing?), not by file order.
 | 9 | `src/data/preprocessing.py:91-113` | Rainfall binned by midpoint (non-causal) | **Fixed** |
 | 10 | `src/data/dataset.py:115-116` | Clamped observations used as trusted targets | **Fixed** |
 
-Open findings 1–8 change a PDE term, loss term, sign, unit or the
+Findings 1 and 3 were fixed in form (b) (depth-integrated 2D, provisional) after
+a plan-mode derivation approved by the author; see the commit message and
+`CLAUDE.md` → Governing physics. Open findings 2, 4–8 change a PDE term, loss term, sign, unit or the
 architecture, so per `CLAUDE.md` each needs a written derivation and the
 author's approval in plan mode before any code changes.
 
@@ -37,10 +39,17 @@ author's approval in plan mode before any code changes.
   residual. Zero residual requires storage = ∇·(K∇h) − Q, so the model is
   pushed either to predict falling head under recharge or to drive Q → 0.
   Working and failing structures can be swapped.
-- **Proposed fix:** `pde_residual = storage_term - divergence - recharge_rate`
-  (with storage_term as in finding 3), plus a test whose expected value fails
-  on the old sign.
-- **Status:** Open — scheduled next, plan mode with derivation.
+- **Fix:** new shared `pde_residual()` in `src/models/losses.py` computes
+  r = S ∂h/∂t − ∇·(T∇h) − R (form (b), every term m/day). Used by
+  `CompositeARSLoss` and by the demo's "PDE residual norm"
+  (`src/backend/inference_engine.py`), which previously used a third,
+  different formula.
+- **Tests:** `tests/test_losses.py::TestPDEResidualPhysics::test_recharge_with_rising_head_has_zero_residual`
+  and `::test_recharge_with_falling_head_is_penalised`. Verified against the
+  pre-fix code (`ba8467d`) with the same scenario: rising head under recharge
+  got PDE loss 1.22e-4 (new: 0) and falling head got the *lower* loss
+  1.18e-4 — the old code preferred the physically wrong answer.
+- **Status:** Fixed.
 
 ## 2. Deformation coupling: wrong sign, wrong coefficient, no LOS projection
 
@@ -78,12 +87,28 @@ author's approval in plan mode before any code changes.
   zero once Δt is introduced.
 - **Failure scenario:** K and Q estimates depend on the satellite revisit
   pattern instead of the aquifer.
-- **Proposed fix:** `storage_term[:, 1:] = S_s * (h[:, 1:] - h[:, :-1]) / dt[:, 1:]`
-  using `time_delta_days`; learnable S_s = softplus(raw) > 0 with stated units;
-  exclude Δt = 0 (padding) from the residual. The integrator's Δt handling
-  (`network.py:69-75`) is a separate architecture change and is out of scope
-  for the first fix.
-- **Status:** Open — scheduled next, plan mode with derivation.
+- **Fix:** storage term = S·(h_k − h_{k−1})/Δt_k with Δt from
+  `time_delta_days`; learnable global storativity S = sigmoid(logit) ∈ (0, 1),
+  init 0.02 (`ARSNet.storativity_logit`, form (b): S is dimensionless, so
+  sigmoid rather than softplus, since S_y < porosity < 1). Steps where k or
+  k−1 is padding (Δt = 0), and step 0, are excluded from the PDE loss; no
+  division by zero.
+- **Tests:** `tests/test_losses.py::TestPDEResidualPhysics::test_storage_uses_real_dt`,
+  `::test_padding_and_first_step_excluded`,
+  `TestCompositeARSLoss::test_gradient_reaches_storativity`,
+  `tests/test_models.py::TestARSNet::test_storativity_is_dimensionless_fraction`.
+  Verified against pre-fix code: for one constant physical rate sampled at
+  Δt = 6/12/24/12/6 days, the old storage term was
+  0.006/0.012/0.024/0.012/0.006 (proportional to Δt); new S·dh/dt is 1e-4 m/day
+  at every step.
+- **Still open (not part of this fix):** `HeadChangeIntegrator`
+  (`src/models/network.py:69-75`) still integrates per step with a fixed decay
+  that ignores Δt, and produces h with no physical units. h is *declared* to
+  be in m, not enforced. Architecture change, needs its own plan.
+- **Caveat:** S is not identifiable from the PDE term alone
+  ((S, T, R) → (cS, cT, cR) leaves r unchanged). Report it as a fitted
+  coefficient, not as a measured specific yield.
+- **Status:** Fixed (storage term); integrator Δt open.
 
 ## 4. Physics graph built from minibatch composition
 
@@ -100,6 +125,13 @@ author's approval in plan mode before any code changes.
   once; each batch indexes rows/columns for its structures and gathers
   neighbour states from a full-graph forward (or uses neighbour sampling from
   the fixed graph).
+- **Units (found while fixing 1 and 3):** in form (b),
+  Σ_j a_ij (T_i+T_j)/2 (h_j − h_i) is in m/day only if a_ij carries 1/m²
+  (e.g. shared boundary length / (distance × cell area), finite-volume
+  stencil). The current a_ij = exp(−d/r) is dimensionless, so this term is in
+  m³/day. Not rescaled (hard rule 2); redefine a_ij as part of this finding.
+  With the 5 km radius and ~50 km spacing of the synthetic set, a_ij = 0
+  everywhere, so the term is currently 0.
 - **Status:** Open.
 
 ## 5. GAT has no self-loop

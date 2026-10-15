@@ -42,6 +42,7 @@ class ARSNetOutput:
     predicted_displacement_cm: torch.Tensor   # (B, T) d_pred_i(t)
     node_embedding: torch.Tensor              # (B, H) v_i^(L), for explainability
     temporal_embedding: torch.Tensor          # (B, D) z_i, for explainability
+    storativity: torch.Tensor                 # scalar S [dimensionless], in (0, 1)
 
 
 class HeadChangeIntegrator(nn.Module):
@@ -128,6 +129,13 @@ class ARSNet(nn.Module):
         self.recharge_decoder = RechargeDecoder(fused_dim=fused_dim, hidden_dim=gat_hidden_dim * 2)
         self.head_integrator = HeadChangeIntegrator()
 
+        # Storativity S (form (b), provisional): one global value, assumes a
+        # single aquifer type. Sigmoid keeps 0 < S < 1 (S_y < porosity < 1).
+        # Init 0.02 ~ specific yield of weathered hard rock (CGWB GEC-2015).
+        # Not identifiable from the PDE term alone: (S, T, R) -> (cS, cT, cR)
+        # leaves the residual unchanged, so report it as a fitted coefficient.
+        self.storativity_logit = nn.Parameter(torch.logit(torch.tensor(0.02)))
+
         self.fused_dim = fused_dim
 
     def forward(
@@ -188,4 +196,5 @@ class ARSNet(nn.Module):
             predicted_displacement_cm=d_pred,
             node_embedding=v_l,
             temporal_embedding=z,
+            storativity=torch.sigmoid(self.storativity_logit),
         )

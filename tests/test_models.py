@@ -112,6 +112,22 @@ class TestARSNet:
         )
         assert (out.recharge_rate >= 0).all()
 
+    def test_storativity_is_dimensionless_fraction(self, synthetic_records):
+        batch = _batch_from_records(synthetic_records, sequence_length=16)
+        model = ARSNet(design_feature_dim=3)
+        out = model(
+            design_features=batch["design_features"],
+            displacement_cm=batch["displacement_cm"],
+            rainfall_mm=batch["rainfall_mm"],
+            time_delta_days=batch["time_delta_days"],
+            adjacency=batch["adjacency"],
+            biot_alpha=batch["biot_alpha"],
+            coherence_mask=batch["coherence_mask"],
+        )
+        assert out.storativity.dim() == 0
+        assert 0.0 < out.storativity.item() < 1.0
+        assert abs(out.storativity.item() - 0.02) < 1e-6  # provisional init
+
     def test_gradients_flow_to_all_parameters(self, synthetic_records):
         batch = _batch_from_records(synthetic_records, sequence_length=16)
         model = ARSNet(design_feature_dim=3)
@@ -127,10 +143,13 @@ class TestARSNet:
         # Include predicted_displacement_cm so the loss also touches
         # `head_integrator` (and therefore `decay_logit`), which
         # `recharge_rate`/`hydraulic_conductivity` alone do not exercise.
+        # `storativity` is the only path to `storativity_logit` (it enters the
+        # PDE residual in the loss, not the forward outputs above).
         loss = (
             out.recharge_rate.sum()
             + out.hydraulic_conductivity.sum()
             + out.predicted_displacement_cm.sum()
+            + out.storativity
         )
         loss.backward()
         missing_grad = [name for name, p in model.named_parameters() if p.grad is None]

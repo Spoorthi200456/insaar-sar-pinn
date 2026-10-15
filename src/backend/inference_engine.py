@@ -27,6 +27,7 @@ import torch
 
 from src.data.dataset import ARSDataset, make_collate_fn
 from src.data.schemas import ARSTelemetryRecord, GraphEdge, StructurePrediction
+from src.models.losses import pde_residual
 from src.models.network import ARSNet
 
 logger = logging.getLogger(__name__)
@@ -285,14 +286,16 @@ class InferenceEngine:
             embedding = out.node_embedding[idx]
             latent_drift = float(torch.norm(embedding - embedding.mean()).item())
 
-            storage_term = torch.zeros_like(out.predicted_head_change[idx : idx + 1])
-            storage_term[:, 1:] = (
-                out.predicted_head_change[idx : idx + 1, 1:]
-                - out.predicted_head_change[idx : idx + 1, :-1]
+            # Same residual the model is trained on (losses.pde_residual), [m/day].
+            residual, valid = pde_residual(
+                out.predicted_head_change,
+                batch["time_delta_days"],
+                out.storativity,
+                out.hydraulic_conductivity,
+                out.recharge_rate,
+                batch["adjacency"],
             )
-            pde_residual_norm = float(
-                torch.norm(storage_term - out.recharge_rate[idx : idx + 1]).item()
-            )
+            pde_residual_norm = float(torch.norm(residual[idx][valid[idx]]).item())
 
         return {
             "feature_attributions": attributions,

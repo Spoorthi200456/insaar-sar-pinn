@@ -35,13 +35,16 @@ def _weighted_laplacian_divergence(
     conductivity: torch.Tensor, head: torch.Tensor, adjacency: torch.Tensor
 ) -> torch.Tensor:
     """
-    Discrete graph approximation of ∇·(K∇h) at each node/timestep:
+    Discrete graph approximation of ∇·(T∇h) at each node/timestep:
 
-        sum_j a_ij * (K_i + K_j)/2 * (h_j - h_i)
+        sum_j a_ij * (T_i + T_j)/2 * (h_j - h_i)
 
-    conductivity: (B,)      K_i, shared across time (steady material property)
-    head:         (B, T)    h_i(t)   (here: predicted head-change series)
-    adjacency:    (B, B)    a_ij connectivity weights
+    conductivity: (B,)      T_i [m²/day] transmissivity (form (b)), shared across time
+    head:         (B, T)    h_i(t) [m]   (here: predicted head-change series)
+    adjacency:    (B, B)    a_ij connectivity weights. For the result to be in
+                            m/day, a_ij must carry 1/m²; the current
+                            exp(-d/r) weights are dimensionless (open, review
+                            finding 4).
     returns:      (B, T)    per-node, per-timestep divergence estimate
     """
     b, t = head.shape
@@ -53,6 +56,47 @@ def _weighted_laplacian_divergence(
     neighbor_term = torch.einsum("ij,jt->it", weighted_adj, head)      # (B, T)
     self_term = head * weighted_adj.sum(dim=1, keepdim=True)           # (B, T)
     return neighbor_term - self_term
+
+
+def pde_residual(
+    head_m: torch.Tensor,
+    time_delta_days: torch.Tensor,
+    storativity: torch.Tensor,
+    transmissivity: torch.Tensor,
+    recharge_m_per_day: torch.Tensor,
+    adjacency: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Residual of the depth-integrated flow equation (form (b), provisional):
+
+        r = S ∂h/∂t − ∇·(T∇h) − R          every term in m/day
+
+    head_m:             (B, T)  h [m]
+    time_delta_days:    (B, T)  Δt_k = t_k − t_{k−1} [day]; 0 on padded steps
+    storativity:        scalar or (B,)  S [dimensionless]
+    transmissivity:     (B,)    T [m²/day]
+    recharge_m_per_day: (B, T)  R [m/day], R > 0 = water INTO the aquifer
+    adjacency:          (B, B)  a_ij
+
+    ∂h/∂t uses the backward difference (h_k − h_{k−1}) / Δt_k, which is only
+    defined when both k and k−1 are real acquisitions (Δt > 0). Step 0, padded
+    steps and the first real step after padding are returned as invalid.
+
+    returns: (residual (B, T), valid (B, T) bool)
+    """
+    dt = time_delta_days
+    valid = torch.zeros_like(head_m, dtype=torch.bool)
+    valid[:, 1:] = (dt[:, 1:] > 0) & (dt[:, :-1] > 0)
+    dt_safe = torch.where(valid, dt, torch.ones_like(dt))  # never divide by 0, even where masked
+
+    dh_dt = torch.zeros_like(head_m)
+    dh_dt[:, 1:] = (head_m[:, 1:] - head_m[:, :-1]) / dt_safe[:, 1:]
+    dh_dt = torch.where(valid, dh_dt, torch.zeros_like(dh_dt))
+
+    s = storativity.reshape(-1, 1) if storativity.dim() > 0 else storativity
+    storage_term = s * dh_dt
+    divergence = _weighted_laplacian_divergence(transmissivity, head_m, adjacency)
+    return storage_term - divergence - recharge_m_per_day, valid
 
 
 @dataclass
@@ -106,12 +150,14 @@ class CompositeARSLoss(nn.Module):
         self,
         predicted_displacement_cm: torch.Tensor,   # (B, T)  d_pred_i(t)
         observed_displacement_cm: torch.Tensor,     # (B, T)  d_obs_i(t)
-        predicted_head_change: torch.Tensor,        # (B, T)  Δh_i(t)
-        hydraulic_conductivity: torch.Tensor,        # (B,)    K_i
-        recharge_rate: torch.Tensor,                 # (B, T)  Q_i(t)
-        design_recharge_capacity: torch.Tensor,      # (B,)    Q_i,design
-        rainfall_mm: torch.Tensor,                    # (B, T)  R_i(t) (mass-balance forcing)
+        predicted_head_change: torch.Tensor,        # (B, T)  h_i(t) [m]
+        hydraulic_conductivity: torch.Tensor,        # (B,)    T_i [m²/day] (form (b))
+        recharge_rate: torch.Tensor,                 # (B, T)  R_i(t) [m/day]
+        design_recharge_capacity: torch.Tensor,      # (B,)    Q_i,design [m³/day]
+        rainfall_mm: torch.Tensor,                    # (B, T)  rainfall (mass-balance forcing)
         adjacency: torch.Tensor,                      # (B, B)
+        time_delta_days: torch.Tensor,                # (B, T)  Δt_k [day], 0 on padding
+        storativity: torch.Tensor,                    # scalar  S [dimensionless]
         observation_mask: torch.Tensor | None = None,      # (B, T) bool, True == reliable
         boundary_head: torch.Tensor | None = None,          # (B, T) known head, if any
         boundary_mask: torch.Tensor | None = None,           # (B, T) bool, True where boundary_head is known
@@ -120,16 +166,18 @@ class CompositeARSLoss(nn.Module):
         w = self.weights
 
         # --- PDE residual loss ---------------------------------------- #
-        # storage term: finite difference of predicted head-change series.
-        storage_term = torch.zeros_like(predicted_head_change)
-        storage_term[:, 1:] = predicted_head_change[:, 1:] - predicted_head_change[:, :-1]
-
-        divergence = _weighted_laplacian_divergence(
-            hydraulic_conductivity, predicted_head_change, adjacency
+        # r = S ∂h/∂t − ∇·(T∇h) − R  [m/day]; see `pde_residual`.
+        residual, pde_valid = pde_residual(
+            predicted_head_change,
+            time_delta_days,
+            storativity,
+            hydraulic_conductivity,
+            recharge_rate,
+            adjacency,
         )
-        pde_residual = divergence - storage_term - recharge_rate
-        pde_residual = torch.clamp(pde_residual, min=-1e4, max=1e4)  # gradient-explosion guard
-        pde_loss = _masked_mse(pde_residual, torch.zeros_like(pde_residual), observation_mask)
+        residual = torch.clamp(residual, min=-1e4, max=1e4)  # gradient-explosion guard
+        pde_mask = pde_valid if observation_mask is None else pde_valid & observation_mask
+        pde_loss = _masked_mse(residual, torch.zeros_like(residual), pde_mask)
 
         # --- Data misfit loss ------------------------------------------ #
         data_loss = _masked_mse(predicted_displacement_cm, observed_displacement_cm, observation_mask)

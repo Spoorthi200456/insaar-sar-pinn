@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import torch
 
-from src.models.losses import CompositeARSLoss, LossWeights, _masked_mse, _weighted_laplacian_divergence
+from src.models.losses import (
+    CompositeARSLoss,
+    LossWeights,
+    _masked_mse,
+    _weighted_laplacian_divergence,
+    pde_residual,
+)
 
 
 class TestMaskedMSE:
@@ -56,6 +62,8 @@ class TestCompositeARSLoss:
             design_recharge_capacity=torch.full((b,), 50.0),
             rainfall_mm=torch.rand(b, t) * 40,
             adjacency=adj,
+            time_delta_days=torch.full((b, t), 12.0),
+            storativity=torch.tensor(0.02),
             observation_mask=torch.ones(b, t, dtype=torch.bool),
         )
 
@@ -103,3 +111,92 @@ class TestCompositeARSLoss:
         breakdown.total.backward()
         assert batch["hydraulic_conductivity"].grad is not None
         assert batch["recharge_rate"].grad is not None
+
+    def test_gradient_reaches_storativity(self):
+        loss_fn = CompositeARSLoss(LossWeights())
+        batch = self._dummy_batch()
+        batch["storativity"] = torch.tensor(0.02, requires_grad=True)
+        loss_fn(**batch).total.backward()
+        assert batch["storativity"].grad is not None
+        assert batch["storativity"].grad.abs().item() > 0
+
+
+class TestPDEResidualPhysics:
+    """
+    Form (b): S ∂h/∂t = ∇·(T∇h) + R, residual r = S ∂h/∂t − ∇·(T∇h) − R [m/day].
+    No neighbours (adjacency = 0) so ∇·(T∇h) = 0 and S ∂h/∂t must equal R.
+    """
+
+    S = 0.1
+    R = 1e-4                 # m/day, recharge INTO the aquifer
+    RATE = R / S             # m/day head rise that exactly balances R
+
+    def _batch(self, head, dt):
+        b, t = head.shape
+        return dict(
+            predicted_displacement_cm=torch.zeros(b, t),
+            observed_displacement_cm=torch.zeros(b, t),
+            predicted_head_change=head,
+            hydraulic_conductivity=torch.ones(b),
+            recharge_rate=torch.full((b, t), self.R),
+            design_recharge_capacity=torch.full((b,), 1e6),
+            rainfall_mm=torch.full((b, t), 1e6),
+            adjacency=torch.zeros(b, b),
+            time_delta_days=dt,
+            storativity=torch.tensor(self.S),
+            observation_mask=torch.ones(b, t, dtype=torch.bool),
+        )
+
+    @staticmethod
+    def _head_from_dt(dt_days, rate):
+        # h_k = rate * (t_k - t_0), with t_k = sum of Δt_1..Δt_k
+        dt = torch.tensor(dt_days, dtype=torch.float64)
+        t = torch.cat([torch.zeros(1, dtype=torch.float64), torch.cumsum(dt[1:], 0)])
+        return (rate * t).float().unsqueeze(0), dt.float().unsqueeze(0)
+
+    def test_recharge_with_rising_head_has_zero_residual(self):
+        head, dt = self._head_from_dt([12.0] * 6, self.RATE)
+        breakdown = CompositeARSLoss(LossWeights())(**self._batch(head, dt))
+        assert breakdown.pde.item() < 1e-14
+
+    def test_recharge_with_falling_head_is_penalised(self):
+        rising, dt = self._head_from_dt([12.0] * 6, self.RATE)
+        falling, _ = self._head_from_dt([12.0] * 6, -self.RATE)
+        loss_fn = CompositeARSLoss(LossWeights())
+        loss_rising = loss_fn(**self._batch(rising, dt)).pde.item()
+        loss_falling = loss_fn(**self._batch(falling, dt)).pde.item()
+        # Positive recharge must favour rising head, never falling head.
+        assert loss_falling > loss_rising
+        assert abs(loss_falling - (2 * self.R) ** 2) < 1e-12  # r = S·(−RATE) − R = −2R
+
+    def test_storage_uses_real_dt(self):
+        # Same physical head rate sampled at irregular Sentinel-1 gaps.
+        head, dt = self._head_from_dt([12.0, 6.0, 12.0, 24.0, 12.0, 6.0], self.RATE)
+        residual, valid = pde_residual(
+            head, dt, torch.tensor(self.S), torch.ones(1),
+            torch.full_like(head, self.R), torch.zeros(1, 1),
+        )
+        assert valid[0, 1:].all()
+        assert torch.allclose(residual[0, 1:], torch.zeros(5), atol=1e-9)
+
+    def test_padding_and_first_step_excluded(self):
+        head, dt = self._head_from_dt([12.0] * 6, self.RATE)
+        head = head + 0.05  # non-zero head, so a pad→real jump would show up if not excluded
+        pad = 4
+        head_p = torch.cat([torch.zeros(1, pad), head], dim=1)
+        dt_p = torch.cat([torch.zeros(1, pad), dt], dim=1)
+
+        _, valid_p = pde_residual(
+            head_p, dt_p, torch.tensor(self.S), torch.ones(1),
+            torch.full_like(head_p, self.R), torch.zeros(1, 1),
+        )
+        # padding, the first real step (predecessor is padding) and k=0 are invalid
+        assert not valid_p[0, : pad + 1].any()
+        assert valid_p[0, pad + 1 :].all()
+
+        loss_fn = CompositeARSLoss(LossWeights())
+        unpadded = loss_fn(**self._batch(head, dt))
+        batch_p = self._batch(head_p, dt_p)
+        padded = loss_fn(**batch_p)
+        assert torch.isfinite(padded.pde)
+        assert abs(padded.pde.item() - unpadded.pde.item()) < 1e-14

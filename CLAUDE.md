@@ -23,8 +23,17 @@ step of the derivation, define every symbol with units, and say which
 textbook result each step relies on. Never skip steps.
 
 ## Governing physics (source of truth — fill in and keep updated)
-- Flow: S_s ∂h/∂t = ∇·(K ∇h) + Q        (Q > 0 = recharge INTO the aquifer)
-- Residual must be:  r = S_s ∂h/∂t − ∇·(K ∇h) − Q
+- Flow, form (a), 3D: S_s ∂h/∂t = ∇·(K ∇h) + Q        (Q > 0 = recharge INTO the aquifer)
+  Residual: r = S_s ∂h/∂t − ∇·(K ∇h) − Q   — every term in 1/day.
+- Flow, form (b), depth-integrated 2D — USED IN CODE (provisional, confirm against data source):
+  S ∂h/∂t = ∇·(T ∇h) + R,  with S = S_s·b (confined) or S_y (unconfined), T = K·b.
+  Residual: r = S ∂h/∂t − ∇·(T ∇h) − R   — every term in m/day.
+  Implemented in `src/models/losses.py::pde_residual`; ∂h/∂t is the backward
+  difference (h_k − h_{k−1})/Δt_k, valid only when steps k and k−1 are both
+  real acquisitions. Assumes Dupuit–Forchheimer (horizontal flow).
+  Derivation: plan of 2026-10-15 / commit message of the fix for findings 1 & 3.
+  S is NOT identifiable from the PDE term alone ((S,T,R) → (cS,cT,cR) leaves r
+  unchanged): report it as a fitted coefficient, not a measured S_y.
 - Deformation coupling: TODO — write the exact relation, the coefficient's
   name and units (it is NOT the dimensionless Biot α if it maps head [m] to displacement [cm]).
 - LOS sign convention: positive = motion toward the satellite.
@@ -40,11 +49,14 @@ textbook result each step relies on. Never skip steps.
 | quantity | symbol | units | where |
 |---|---|---|---|
 | LOS displacement | d | cm | schemas.py |
-| rainfall | R | mm per InSAR interval | dataset.py |
+| rainfall | P | mm per InSAR interval | dataset.py |
 | design recharge capacity | Q_design | m³/day | schemas.py |
-| recharge (model output) | Q | TODO | network.py |
-| hydraulic conductivity | K | TODO | network.py |
-| time step | Δt | days | dataset.py |
+| recharge (model output `recharge_rate`) | R | m/day — declared, not enforced (provisional; still compared with m³/day and mm in regularizers, review finding 6) | network.py |
+| transmissivity (model output `hydraulic_conductivity`, interpreted as T in form (b)) | T = K·b | m²/day (provisional) | network.py |
+| storativity (`ARSNet.storativity_logit` → sigmoid) | S | dimensionless, in (0, 1), init 0.02 (provisional) | network.py |
+| head (model output `predicted_head_change`) | h | m — declared, not enforced (integrator has no units and ignores Δt, review finding 3 note) | network.py |
+| graph weight | a_ij | MUST be 1/m² for ∇·(T∇h) to be m/day; currently dimensionless exp(−d/r) — OPEN, review finding 4 | preprocessing.py |
+| time step | Δt | days (0 on padded steps) | dataset.py |
 
 ## Hard rules
 1. Never change a PDE term, loss term, sign, or unit without first writing the

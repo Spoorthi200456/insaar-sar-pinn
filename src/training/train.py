@@ -182,6 +182,8 @@ def train(
                 design_recharge_capacity=batch["design_recharge_capacity"].to(device),
                 rainfall_mm=batch["rainfall_mm"].to(device),
                 adjacency=batch["adjacency"].to(device),
+                time_delta_days=batch["time_delta_days"].to(device),
+                storativity=out.storativity,
                 observation_mask=batch["coherence_mask"].to(device),
             )
 
