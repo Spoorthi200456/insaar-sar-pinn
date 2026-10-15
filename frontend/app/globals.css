@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-base-950 text-slate-100 antialiased;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-base-900;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-base-600 rounded-full;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply bg-base-900 border border-base-700 rounded-xl shadow-panel;
+  }
+
+  .panel-header {
+    @apply px-4 py-3 border-b border-base-700 flex items-center justify-between;
+  }
+
+  .stat-pill {
+    @apply px-2.5 py-1 rounded-full text-xs font-medium tracking-wide;
+  }
+
+  input[type="range"] {
+    @apply w-full h-1.5 rounded-full bg-base-700 appearance-none cursor-pointer accent-accent-500;
+  }
+}
+
+/* react-map-gl / maplibre-gl requires this stylesheet's layout classes to
+   size correctly inside a flex/grid parent. */
+.maplibregl-map {
+  border-radius: 0.75rem;
+  overflow: hidden;
+}

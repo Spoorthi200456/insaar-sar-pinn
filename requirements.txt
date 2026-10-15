@@ -1,0 +1,43 @@
+# --- Core numerics / ML ---
+# torch: floor version, not an exact pin. Reasons:
+#  1. Python 3.14 has no CUDA wheels at all before torch 2.9 (CPU-only
+#     wheels only) -- pinning to an old exact version like 2.4.1 would be
+#     unable to install on 3.14 (no matching wheel) at all.
+#  2. GPU users: install your CUDA build FIRST, e.g.
+#       pip install torch --index-url https://download.pytorch.org/whl/cu126
+#     (pick the CUDA tag matching your driver at
+#     https://pytorch.org/get-started/locally/), *then* run
+#     `pip install -r requirements.txt` -- a floor version here (">=") is
+#     satisfied by whatever you already have and won't downgrade/replace
+#     your CUDA build with a CPU-only one, which an exact "==" pin would.
+torch>=2.6.0
+numpy==1.26.4
+scipy==1.13.1
+
+# --- Data contracts ---
+pydantic==2.9.2
+pydantic-settings==2.5.2
+
+# --- Backend service ---
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+websockets==13.1
+python-multipart==0.0.9
+
+# --- Inference optimization ---
+onnx==1.16.2
+onnxruntime==1.19.2
+onnxruntime-tools==1.7.0
+
+# --- Utilities ---
+python-dotenv==1.0.1
+orjson==3.10.7
+structlog==24.4.0
+
+# --- Testing / CI ---
+pytest==8.3.3
+pytest-asyncio==0.24.0
+httpx==0.27.2
+ruff==0.6.9
+black==24.8.0
+mypy==1.11.2

@@ -1,0 +1,83 @@
+from __future__ import annotations
+
+import json
+from uuid import uuid4
+
+import pytest
+from fastapi.testclient import TestClient
+
+from src.backend.api import app
+from src.data.schemas import PredictionRequest, TelemetryBatch
+from src.training.train import make_synthetic_records
+
+
+def _prediction_request_payload(n_structures: int = 3, n_timesteps: int = 12) -> dict:
+    records = make_synthetic_records(n_structures=n_structures, n_timesteps=n_timesteps, seed=7)
+    batch = TelemetryBatch(batch_id=uuid4(), records=records, edges=[])
+    request = PredictionRequest(batch=batch, recharge_efficiency_threshold=0.3)
+    return json.loads(request.model_dump_json())
+
+
+@pytest.fixture()
+def client():
+    with TestClient(app) as c:
+        yield c
+
+
+class TestHealthEndpoint:
+    def test_health_returns_ok(self, client):
+        response = client.get("/api/v1/health")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "ok"
+        assert "backend" in body
+
+
+class TestPredictEndpoint:
+    def test_predict_returns_one_prediction_per_structure(self, client):
+        payload = _prediction_request_payload(n_structures=4)
+        response = client.post("/api/v1/predict", json=payload)
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body["predictions"]) == 4
+        for pred in body["predictions"]:
+            assert pred["hydraulic_conductivity_m_per_day"] > 0
+            assert all(v >= 0 for v in pred["predicted_recharge_series_m3_per_day"])
+
+    def test_predict_rejects_malformed_payload(self, client):
+        response = client.post("/api/v1/predict", json={"batch": {"records": []}})
+        assert response.status_code == 422
+
+    def test_predict_rejects_unknown_extra_field(self, client):
+        payload = _prediction_request_payload(n_structures=1)
+        payload["not_a_real_field"] = True
+        response = client.post("/api/v1/predict", json=payload)
+        assert response.status_code == 422
+
+    def test_predict_response_includes_request_id_header(self, client):
+        payload = _prediction_request_payload(n_structures=1)
+        response = client.post("/api/v1/predict", json=payload)
+        assert "X-Request-ID" in response.headers
+        assert "X-Process-Time-Ms" in response.headers
+
+
+class TestExplainEndpoint:
+    def test_explain_returns_attributions_for_known_structure(self, client):
+        payload = _prediction_request_payload(n_structures=2)
+        batch = payload["batch"]
+        structure_id = batch["records"][0]["design"]["structure_id"]
+        response = client.request(
+            "GET", f"/api/v1/explain/{structure_id}", content=json.dumps(batch)
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["structure_id"] == structure_id
+        assert "design_features_grad_l1" in body["feature_attributions"]
+
+    def test_explain_unknown_structure_returns_404(self, client):
+        payload = _prediction_request_payload(n_structures=2)
+        batch = payload["batch"]
+        response = client.request(
+            "GET", "/api/v1/explain/NOT-A-REAL-ID", content=json.dumps(batch)
+        )
+        assert response.status_code == 404
