@@ -330,7 +330,7 @@ failed before the fix; see each commit message for the before/after output.
 | 24 | `src/training/train.py` | "Best" checkpoint chosen on training loss; no validation split | **Fixed** (review 3) |
 | 25 | `src/models/losses.py`, `train.py` | Well heads (`well_series`) never reach the loss | **Fixed** (author decision 4) |
 | 26 | `src/data/schemas.py::RainfallObservation` | Rain > 1000 mm silently clamped, no flag | **Fixed** (review 3) |
-| 27 | `src/backend/api.py` (WebSocket) | Streaming endpoint has no test | Open |
+| 27 | `src/backend/api.py` (WebSocket) | Streaming endpoint has no test (and sent binary frames) | **Fixed** (review 3) |
 | 28 | `src/models/layers.py::CVEncoder` | CV branch unused by any training, demo or test path | Open |
 | 29 | `src/models/losses.py::CompositeARSLoss` | Total loss adds (m/day)², cm² and m²: physics weight ≈ 1e-6 of data | **Fixed** |
 | 30 | `src/models/layers.py::RechargeDecoder` | Decoders forget which structure they are decoding: R identical across structures | **Fixed** |
@@ -583,7 +583,12 @@ failed before the fix; see each commit message for the before/after output.
   is hidden. **Fixed in review 3:** still clamped, now flagged
   `OUT_OF_BOUNDS_CLAMPED`. Test: `TestRainfallClampIsFlagged` (before: 1 of 2
   failed; the other is a guard).
-- **27. WebSocket untested.** `/ws/telemetry` has no test.
+- **27. WebSocket untested.** `/ws/telemetry` has no test. **Fixed in review 3,
+  and it hid a bug:** predictions were sent as BINARY frames (`send_bytes`);
+  the dashboard does `JSON.parse(event.data)`, and browsers deliver binary
+  frames as a Blob, so streamed predictions could not be parsed. Now
+  `send_text`. Tests: `tests/test_api.py::TestWebSocketTelemetry` (2; before:
+  both failed - each received its prediction as a binary frame).
 - **28. CV branch unused.** `CVEncoder` is not exercised by any training, demo
   or test path. Decide whether it is in scope.
 

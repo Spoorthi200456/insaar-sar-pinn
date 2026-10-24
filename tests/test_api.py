@@ -104,3 +104,30 @@ class TestExplainUsesBatchGraph:
         adj = captured["adjacency"]
         assert adj.shape == (2, 2)
         assert adj[0, 1].item() > 0 and adj[1, 0].item() > 0  # surveyed edge is present
+
+
+class TestWebSocketTelemetry:
+    """
+    Review finding 27: /ws/telemetry had no test. Every message must be a TEXT
+    frame of JSON: the dashboard does JSON.parse(event.data), and a binary frame
+    arrives in the browser as a Blob, which JSON.parse cannot read.
+    """
+
+    def test_prediction_is_a_text_json_frame(self, client):
+        payload = _prediction_request_payload(n_structures=3)
+        with client.websocket_connect("/ws/telemetry") as ws:
+            ws.send_text(json.dumps(payload))
+            message = ws.receive()
+            assert message.get("text") is not None, "prediction sent as a binary frame"
+            body = json.loads(message["text"])
+        assert body["type"] == "prediction"
+        assert len(body["predictions"]) == 3
+        assert body["batch_id"] == payload["batch"]["batch_id"]
+
+    def test_invalid_payload_returns_error_and_keeps_connection(self, client):
+        with client.websocket_connect("/ws/telemetry") as ws:
+            ws.send_text("{not json")
+            err = ws.receive_json()
+            assert err["type"] == "error" and err["detail"] == "invalid_payload"
+            ws.send_text(json.dumps(_prediction_request_payload(n_structures=1)))
+            assert json.loads(ws.receive()["text"])["type"] == "prediction"

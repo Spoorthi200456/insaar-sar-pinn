@@ -268,8 +268,12 @@ async def telemetry_stream(websocket: WebSocket) -> None:
                 model_version=settings.model_version,
                 predictions=predictions,
             )
-            await websocket.send_bytes(
-                orjson.dumps({"type": "prediction", **orjson.loads(response.model_dump_json())})
+            # TEXT frame (review finding 27): browsers deliver binary frames as a
+            # Blob, which the dashboard's JSON.parse(event.data) cannot read.
+            await websocket.send_text(
+                orjson.dumps(
+                    {"type": "prediction", **orjson.loads(response.model_dump_json())}
+                ).decode("utf-8")
             )
 
     except WebSocketDisconnect:
