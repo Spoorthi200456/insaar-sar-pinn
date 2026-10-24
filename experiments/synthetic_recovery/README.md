@@ -168,3 +168,30 @@ initialising S_k from the data's amplitude, giving the global scalars their own 
 rate, or training longer, is a change to the method chosen *after* seeing a failed test.
 That is the garden-of-forking-paths risk the pre-registration exists to prevent, so it
 needs the author's decision.
+
+### Run 2 protocol — DIAGNOSTIC, declared before running (committed before run 2 was made)
+
+Author's decision after run 1b: one stated protocol change, one run, the same thresholds.
+Whatever happens, the official pre-registered outcome stays **run 1b (failed)**. If run 2
+meets the thresholds, it will be reported as "passes under a protocol revised after seeing
+run 1", not as "passes".
+
+**The single change:** the three global physical scalars (`storativity_logit`,
+`skeletal_storage_raw`, `leakance_raw`) get their own Adam learning rate,
+**0.02** (weight decay 0 on them). The network weights keep lr 1e-3.
+
+**Why this value (a rule, not a fit to the result):** each scalar is a bounded
+sigmoid of a raw parameter. raw ∈ [−4, 4] covers 98 % of its range: S_k from about 1.1e-6
+to 0.9e-2, starting at raw = 0. With a cosine schedule, the furthest Adam can move a
+parameter is about Σ lr_t ≈ lr × epochs / 2. Reaching either end of the range from 0 needs
+Σ ≥ 4, so lr ≥ 4 / 300 ≈ 0.013. 0.02 is the next round value above that. Run 1b's lr of
+1e-3 allowed Σ ≈ 0.3.
+
+**Not changed:**
+- S_k still starts at **1e-4**, the geometric middle of the elastic S_k ≈ 1e-5–1e-3
+  reported from InSAR + well studies (Hoffmann et al. 2001, *WRR* 37). Starting it at the
+  simulator's true 5e-3 would put the answer in.
+- Network learning rate, epochs, data, seeds, loss weights and scales, thresholds.
+
+Run with `python experiments/synthetic_recovery/run_recovery.py --protocol revised-run2`
+(writes `results_run2.*`).

@@ -70,6 +70,19 @@ WEIGHT_DECAY = 1e-5
 GRAD_CLIP = 5.0
 WELL_NOISE_M = 0.05
 
+# ---- protocols ----
+# "preregistered": the protocol committed with the thresholds (official outcome).
+# "revised-run2": ONE change, declared and committed before run 2 was made
+#   (README "Run 2 protocol"): the three global physical scalars (storativity,
+#   skeletal storage, leakance) get their own learning rate GLOBAL_SCALAR_LR so
+#   that each can cross its whole bounded range (raw in [-4, 4]) within the
+#   budget: sum_t lr_t ~ lr * EPOCHS / 2 (cosine) >= 4  =>  lr >= 0.0133.
+#   Everything else (S_k start 1e-4, network LR, epochs, data, thresholds) is
+#   unchanged. Diagnostic only: a protocol revised after seeing run 1.
+PROTOCOLS = ("preregistered", "revised-run2")
+GLOBAL_SCALAR_LR = 0.02
+GLOBAL_SCALARS = ("storativity_logit", "skeletal_storage_raw", "leakance_raw")
+
 T0 = datetime(2024, 1, 1, tzinfo=timezone.utc)
 
 
@@ -153,7 +166,10 @@ def run_scenario(
     oracle_constants: bool = False,
     with_wells: bool = False,
     epochs: int = EPOCHS,
+    protocol: str = "preregistered",
 ) -> ScenarioResult:
+    if protocol not in PROTOCOLS:
+        raise ValueError(f"unknown protocol {protocol!r}")
     seed_everything(SEED)
     t_start = time.time()
     records = to_records(sim)
@@ -168,7 +184,18 @@ def run_scenario(
         _freeze_to_truth(model, sim.cfg)
     loss_fn = CompositeARSLoss(LossWeights())
     params = [p for p in model.parameters() if p.requires_grad]
-    opt = torch.optim.AdamW(params, lr=LR, weight_decay=WEIGHT_DECAY)
+    if protocol == "revised-run2":
+        named = {n: p for n, p in model.named_parameters() if p.requires_grad}
+        scalars = [named[n] for n in GLOBAL_SCALARS if n in named]
+        others = [p for n, p in named.items() if n not in GLOBAL_SCALARS]
+        opt = torch.optim.AdamW(
+            [
+                {"params": others, "lr": LR, "weight_decay": WEIGHT_DECAY},
+                {"params": scalars, "lr": GLOBAL_SCALAR_LR, "weight_decay": 0.0},
+            ]
+        )
+    else:
+        opt = torch.optim.AdamW(params, lr=LR, weight_decay=WEIGHT_DECAY)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs)
 
     boundary = {}
@@ -275,7 +302,8 @@ def oracle_floor(sim: Simulation) -> float:
     return float(np.median(np.abs(eta_hat[working] - sim.eta[working]) / sim.eta[working]))
 
 
-def main() -> None:
+def main(protocol: str = "preregistered") -> None:
+    print(f"protocol: {protocol}")
     base = TruthConfig()
     sim = simulate(base)
     sim_hard = simulate(replace(base, skeletal_storage=2e-5))
@@ -287,10 +315,10 @@ def main() -> None:
     )
 
     results = [
-        run_scenario("A_insar_only", sim),
-        run_scenario("B_oracle_S_Sk", sim, oracle_constants=True),
-        run_scenario("C_hard_rock", sim_hard),
-        run_scenario("D_with_wells", sim, with_wells=True),
+        run_scenario("A_insar_only", sim, protocol=protocol),
+        run_scenario("B_oracle_S_Sk", sim, oracle_constants=True, protocol=protocol),
+        run_scenario("C_hard_rock", sim_hard, protocol=protocol),
+        run_scenario("D_with_wells", sim, with_wells=True, protocol=protocol),
     ]
 
     rows = [
@@ -333,10 +361,16 @@ def main() -> None:
             f"({res.seconds:.0f} s)"
         )
         print("    " + ", ".join(f"{k}={v:.3g}" for k, v in res.diagnostics.items()))
-    (HERE / "results.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
-    (HERE / "results.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
-    print(f"wrote {HERE / 'results.csv'} and results.json")
+    summary["protocol"] = protocol
+    stem = "results" if protocol == "preregistered" else "results_run2"
+    (HERE / f"{stem}.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    (HERE / f"{stem}.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    print(f"wrote {HERE / stem}.csv and {stem}.json")
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[1])
+    parser.add_argument("--protocol", choices=PROTOCOLS, default="preregistered")
+    main(parser.parse_args().protocol)
