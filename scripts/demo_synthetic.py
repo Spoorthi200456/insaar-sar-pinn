@@ -25,6 +25,7 @@ What it is NOT
 
 from __future__ import annotations
 
+import copy
 import csv
 import os
 import random
@@ -46,6 +47,7 @@ import torch  # noqa: E402
 warnings.filterwarnings("ignore", message=r".*protected namespace.*")
 
 from src.data.dataset import ARSDataset, make_collate_fn  # noqa: E402
+from src.data.splits import split_structures  # noqa: E402
 from src.models.losses import CompositeARSLoss, LossWeights  # noqa: E402
 from src.models.network import ARSNet  # noqa: E402
 from src.training.train import (  # noqa: E402
@@ -82,6 +84,7 @@ INK = "#0b0b0b"
 INK_2 = "#52514e"
 GRID = "#e4e3df"
 SERIES_1 = "#2a78d6"
+SERIES_2 = "#c2410c"
 
 
 def seed_everything(seed: int) -> None:
@@ -93,8 +96,10 @@ def seed_everything(seed: int) -> None:
     torch.set_num_threads(max(1, min(4, os.cpu_count() or 1)))
 
 
-def full_batch(records) -> dict:
-    dataset = ARSDataset(records, sequence_length=N_TIMESTEPS)
+def full_batch(records, design_stats=None) -> dict:
+    dataset = ARSDataset(
+        records, sequence_length=N_TIMESTEPS, design_feature_normalizers=design_stats
+    )
     collate = make_collate_fn(connectivity_radius_km=CONNECTIVITY_RADIUS_KM)
     return collate([dataset[i] for i in range(len(dataset))])
 
@@ -131,13 +136,31 @@ def loss_of(loss_fn: CompositeARSLoss, out, batch: dict):
     )
 
 
-def plot_loss_curves(history: dict[str, list[float]], weights: LossWeights, path: Path) -> None:
+def plot_loss_curves(
+    history: dict[str, list[float]], weights: LossWeights, path: Path, val_total: list[float]
+) -> None:
     epochs = np.arange(1, len(history["total"]) + 1)
     fig, axes = plt.subplots(3, 3, figsize=(14, 10), facecolor=SURFACE)
     for ax, (key, title, weight_attr) in zip(axes.flat, TERMS):
         y = np.asarray(history[key])
         ax.set_facecolor(SURFACE)
-        ax.plot(epochs, y, color=SERIES_1, linewidth=1.5, solid_capstyle="round")
+        ax.plot(
+            epochs,
+            y,
+            color=SERIES_1,
+            linewidth=1.5,
+            solid_capstyle="round",
+            label="training structures",
+        )
+        if key == "total":
+            ax.plot(
+                epochs,
+                val_total,
+                color=SERIES_2,
+                linewidth=1.5,
+                label="validation structures (unseen)",
+            )
+            ax.legend(fontsize=7, frameon=False)
         subtitle = (
             "weighted sum of all terms"
             if weight_attr is None
@@ -177,8 +200,8 @@ def plot_loss_curves(history: dict[str, list[float]], weights: LossWeights, path
     fig.text(
         0.01,
         0.005,
-        "SYNTHETIC DATA. Not a recovery test (see experiments/synthetic_recovery/). Terms "
-        "unweighted in physical units; the total is dimensionless (review finding 29).",
+        "SYNTHETIC DATA. Trained on the training structures only; validation = unseen structures. "
+        "Terms unweighted in physical units; total dimensionless. Not a recovery test.",
         fontsize=8,
         color=INK_2,
         ha="left",
@@ -196,11 +219,16 @@ def main() -> None:
     records, truth = make_synthetic_records_with_truth(
         n_structures=N_STRUCTURES, n_timesteps=N_TIMESTEPS, seed=SEED
     )
-    batch = full_batch(records)
-
-    adjacency = batch["physics_adjacency"]
-    n_edges = int(torch.triu(adjacency > 0, diagonal=1).sum().item())
-    n_pairs = N_STRUCTURES * (N_STRUCTURES - 1) // 2
+    # Review 3: the demo now trains on the TRAINING split only and reports on
+    # structures it never saw (split by connected group, fixed seed; finding 24).
+    split = split_structures(records, seed=SEED)
+    by_id = {r.design.structure_id: r for r in records}
+    truth_by_id = {t["structure_id"]: t for t in truth}
+    train_recs = [by_id[i] for i in split.train]
+    stats = ARSDataset(train_recs, sequence_length=N_TIMESTEPS)._design_stats
+    batch = full_batch(train_recs, stats)
+    val_batch = full_batch([by_id[i] for i in split.validation], stats)
+    test_batch = full_batch([by_id[i] for i in split.test], stats)
 
     model = ARSNet(design_feature_dim=3)
     weights = LossWeights()
@@ -210,9 +238,12 @@ def main() -> None:
 
     history: dict[str, list[float]] = {key: [] for key, _, _ in TERMS}
     s_history: list[float] = []
+    val_total: list[float] = []
+    best_val, best_state, best_epoch = float("inf"), None, -1
     print(
-        f"{TAG} training ARSNet: {N_STRUCTURES} structures x {N_TIMESTEPS} steps, "
-        f"{EPOCHS} epochs, seed {SEED}, full batch, CPU"
+        f"{TAG} training ARSNet on {len(split.train)} of {N_STRUCTURES} structures "
+        f"(validation {len(split.validation)}, test {len(split.test)}, never seen in training), "
+        f"{N_TIMESTEPS} steps, {EPOCHS} epochs, seed {SEED}, CPU"
     )
     for epoch in range(EPOCHS):
         model.train()
@@ -228,72 +259,81 @@ def main() -> None:
         for key, value in breakdown.as_dict().items():
             history[key].append(value)
         s_history.append(float(out.storativity.detach()))
+        model.eval()
+        with torch.no_grad():
+            v = float(loss_of(loss_fn, forward(model, val_batch), val_batch).total)
+        val_total.append(v)
+        if v < best_val:
+            best_val, best_state, best_epoch = v, copy.deepcopy(model.state_dict()), epoch
         if epoch % 50 == 0 or epoch == EPOCHS - 1:
             print(
-                f"{TAG} epoch {epoch:4d}  total {history['total'][-1]:.5f}  "
-                f"pde {history['pde_residual'][-1]:.3e}  data {history['data_misfit'][-1]:.5f}"
+                f"{TAG} epoch {epoch:4d}  train total {history['total'][-1]:.5f}  "
+                f"validation total {v:.5f}  data {history['data_misfit'][-1]:.5f}"
             )
     train_seconds = time.time() - t_start
 
+    model.load_state_dict(best_state)
     model.eval()
     with torch.no_grad():
-        out = forward(model, batch)
-        final = loss_of(loss_fn, out, batch).as_dict()
+        out_test = forward(model, test_batch)  # the only time the test structures are used
+        test = loss_of(loss_fn, out_test, test_batch).as_dict()
 
     png = OUT_DIR / "loss_curves.png"
     csv_path = OUT_DIR / "loss_history.csv"
-    plot_loss_curves(history, weights, png)
+    plot_loss_curves(history, weights, png, val_total)
     with csv_path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(
-            ["# SYNTHETIC DATA - ARSNet loss terms per epoch (unweighted; total is weighted)"]
+            [
+                "# SYNTHETIC DATA - loss terms per epoch on TRAINING structures (unweighted; "
+                "total is weighted); validation_total on unseen validation structures"
+            ]
         )
-        writer.writerow(["epoch", *[key for key, _, _ in TERMS], "storativity_S"])
+        writer.writerow(
+            ["epoch", *[key for key, _, _ in TERMS], "validation_total", "storativity_S"]
+        )
         for i in range(EPOCHS):
             writer.writerow(
-                [i + 1, *[f"{history[key][i]:.8g}" for key, _, _ in TERMS], f"{s_history[i]:.8g}"]
+                [
+                    i + 1,
+                    *[f"{history[key][i]:.8g}" for key, _, _ in TERMS],
+                    f"{val_total[i]:.8g}",
+                    f"{s_history[i]:.8g}",
+                ]
             )
 
+    test_ids = test_batch["structure_ids"]
+    r_fit = out_test.recharge_rate[:, 1:].mean(dim=1).numpy()
+    r_true = np.array([np.mean(truth_by_id[i]["recharge_m_per_day"][1:]) for i in test_ids])
     print()
-    print(f"{TAG} ===== RESULTS =====")
+    print(f"{TAG} ===== RESULTS (test structures never seen in training) =====")
     print(
         f"{TAG} training time        : {train_seconds:.1f} s on CPU "
         f"({'within' if train_seconds < TIME_BUDGET_S else 'OVER'} the {TIME_BUDGET_S:.0f} s budget)"
     )
     print(
-        f"{TAG} learned S / S_k / L  : {float(out.storativity):.4f} / "
-        f"{float(out.skeletal_storage):.2e} / {float(out.leakance):.2e} 1/day "
+        f"{TAG} split (seed {SEED})     : train {len(split.train)}, validation "
+        f"{len(split.validation)}, test {len(split.test)}; best validation epoch {best_epoch}"
+    )
+    print(
+        f"{TAG} learned S / S_k / L  : {float(out_test.storativity):.4f} / "
+        f"{float(out_test.skeletal_storage):.2e} / {float(out_test.leakance):.2e} 1/day "
         f"(generator: {truth[0]['storativity']:.4f} / {truth[0]['skeletal_storage']:.2e} / "
-        f"{truth[0]['leakance_per_day']:.2e}) - fitted coefficients; only R*S_k/S is "
-        f"identifiable from InSAR"
+        f"{truth[0]['leakance_per_day']:.2e})"
     )
+    print(f"{TAG} test losses          : " + ", ".join(f"{k}={v:.4g}" for k, v in test.items()))
     print(
-        f"{TAG} graph edges          : {n_edges} of {n_pairs} possible pairs "
-        f"(undirected, radius {CONNECTIVITY_RADIUS_KM:g} km)"
+        f"{TAG} test InSAR misfit    : RMSE {np.sqrt(test['data_misfit']):.3f} cm "
+        f"(generator noise 0.05 cm)"
     )
-    print(f"{TAG} final eval losses    : " + ", ".join(f"{k}={v:.4g}" for k, v in final.items()))
-    print(
-        f"{TAG} predicted T and R for 3 structures (T [m²/day]; R [m/day], "
-        f"generator mean R in the last column):"
-    )
-    print(
-        f"{TAG}   {'structure':<10} {'T [m²/day]':>11} {'R mean [m/day]':>15} "
-        f"{'R min':>10} {'R max':>10} {'graph degree':>13} {'true R mean':>12}"
-    )
-    degree = (adjacency > 0).sum(dim=1)
-    for i in range(3):
-        sid = batch["structure_ids"][i]
-        r = out.recharge_rate[i]
-        print(
-            f"{TAG}   {sid:<10} {float(out.hydraulic_conductivity[i]):>11.4f} "
-            f"{float(r.mean()):>15.4e} {float(r.min()):>10.3e} {float(r.max()):>10.3e} "
-            f"{int(degree[i]):>13d} {np.mean(truth[i]['recharge_m_per_day'][1:]):>12.4e}"
-        )
+    print(f"{TAG}   {'structure':<10} {'R fit [m/day]':>14} {'R planted':>12} {'ratio':>7}")
+    for sid, rf, rt in zip(test_ids, r_fit, r_true, strict=True):
+        print(f"{TAG}   {sid:<10} {rf:>14.4e} {rt:>12.4e} {rf / rt:>7.3f}")
     print(f"{TAG} saved plot  : {png.relative_to(ROOT).as_posix()}")
     print(f"{TAG} saved table : {csv_path.relative_to(ROOT).as_posix()}")
     print(
-        f"{TAG} caveat: not a recovery test - see experiments/synthetic_recovery/README.md "
-        f"(the pre-registered known-answer test FAILS)."
+        f"{TAG} caveat: {len(split.test)} test structures are too few for a ranking "
+        f"statistic; see experiments/synthetic_recovery/heldout.py (run 4)."
     )
 
 
