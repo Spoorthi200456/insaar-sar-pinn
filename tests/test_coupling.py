@@ -83,21 +83,27 @@ class TestARSNetCoupling:
         h_inc = h - h[:, :1]  # no padding at T=16, so the first real step is index 0
         expected = head_to_los_cm(h_inc, out.skeletal_storage, batch["incidence_angle_deg"])
         assert torch.allclose(out.predicted_displacement_cm, expected, atol=1e-7)
-        # sign: wherever head has risen since t0, the model must predict uplift (d > 0)
-        rising = h_inc > 1e-6
-        assert rising.any()
+        # sign: head risen since t0 -> uplift (d > 0); head fallen -> subsidence (d < 0)
+        rising, falling = h_inc > 1e-6, h_inc < -1e-6
+        assert rising.any() or falling.any()
         assert (out.predicted_displacement_cm[rising] > 0).all()
+        assert (out.predicted_displacement_cm[falling] < 0).all()
 
     def test_skeletal_storage_bounded(self, synthetic_records):
         batch = _batch(synthetic_records)
         model = ARSNet(design_feature_dim=3)
         out = _forward(model, batch)
         assert out.skeletal_storage.item() == pytest.approx(1e-4, rel=1e-5)  # init
-        opt = torch.optim.SGD(model.parameters(), lr=1e3)
-        (-out.predicted_displacement_cm.sum() * 1e6).backward()  # huge push upward
-        opt.step()
-        s_k = _forward(model, batch).skeletal_storage.item()
-        assert 1e-6 < s_k < 1e-2
+        for direction in (+1.0, -1.0):  # huge pushes both ways: S_k must stay in its range
+            model = ARSNet(design_feature_dim=3)
+            opt = torch.optim.SGD(model.parameters(), lr=1e3)
+            loss = direction * 1e6 * model.skeletal_storage()
+            loss.backward()
+            opt.step()
+            s_k = _forward(model, batch).skeletal_storage.item()
+            # closed bounds: float32 sigmoid saturates to exactly 0 or 1
+            assert 1e-6 * (1 - 1e-6) <= s_k <= 1e-2 * (1 + 1e-6)
+            assert s_k != pytest.approx(1e-4, rel=0.5)  # it really moved
 
 
 class TestSyntheticGeneratorUsesModelCoupling:

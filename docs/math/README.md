@@ -11,6 +11,7 @@ marked "check against your edition".
 | [recharge_units.md](recharge_units.md) | Recharge vs design capacity vs rainfall | 6 |
 | [graph_stencil.md](graph_stencil.md) | Lateral flow on a fixed structure graph, a_ij in 1/m² | 4 |
 | [masking.md](masking.md) | Which time steps each loss term uses; no hard clamp | 8, 7 |
+| [head_integrator.md](head_integrator.md) | Head from head rate with the real Δt | 3 (note) |
 
 The governing equations used by the code are summarised in `CLAUDE.md` →
 "Governing physics"; these notes are the full derivations behind it.

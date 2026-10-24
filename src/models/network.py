@@ -6,8 +6,9 @@ ARSNet: the complete multi-branch architecture from Module 2.
     z_i     = TemporalAlignmentTransformer(d_i(t), R_i(t), Δt_t)
     u_i     = [v_i^(L) ; z_i]                    (fused representation)
     K_i     = exp(w_K^T u_i + b_K)               (positivity-constrained)
-    Q_i(t)  = RechargeDecoder(u_i, R_i(t))        (non-negative via softplus)
-    h_i(t)  = HeadChangeIntegrator(Q_i(t), K_i)   (predicted head change [m])
+    Q_i(t)  = RechargeDecoder(u_i, R_i(t))        (non-negative via softplus) [m/day]
+    v_i(t)  = V_SCALE * HeadRateDecoder(u_i, R_i(t))                         [m/day]
+    h_i,k   = h_i,k-1 + Δt_k v_i,k,  h = 0 at the first real acquisition     [m]
     d_pred_i(t) = 100 * cos(theta_i) * S_k * (h_i(t) - h_i(t_ref))     [cm]
 
 The last line is the poroelastic coupling of review finding 2
@@ -18,6 +19,11 @@ satellite, PROVISIONAL). S_k is the skeletal storage coefficient
 (dimensionless, one global learnable value); theta_i is the per-structure
 incidence angle. h is referenced to the first real acquisition because InSAR
 displacement is relative to it (finding-2 plan, Q6).
+
+The head is a separate network output tied to recharge only through the PDE
+residual r = S ∂h/∂t − ∇·(T∇h) − R in the loss (a soft physics constraint, as
+in a standard PINN). Its integrator uses the real Δt, so h is in metres by
+construction (docs/math/head_integrator.md).
 """
 
 from __future__ import annotations
@@ -40,45 +46,45 @@ from src.models.layers import (
 class ARSNetOutput:
     hydraulic_conductivity: torch.Tensor      # (B,)  K_i
     recharge_rate: torch.Tensor               # (B, T) Q_i(t)
-    predicted_head_change: torch.Tensor       # (B, T) Δh_i(t) proxy
+    predicted_head_change: torch.Tensor       # (B, T) h_i(t) - h_i(t_first) [m]
     predicted_displacement_cm: torch.Tensor   # (B, T) d_pred_i(t)
     node_embedding: torch.Tensor              # (B, H) v_i^(L), for explainability
     temporal_embedding: torch.Tensor          # (B, D) z_i, for explainability
     storativity: torch.Tensor                 # scalar S [dimensionless], in (0, 1)
     skeletal_storage: torch.Tensor            # scalar S_k [dimensionless], in (1e-6, 1e-2)
+    head_rate: torch.Tensor                   # (B, T) v_i(t) = ∂h/∂t estimate [m/day]
+
+
+# Characteristic head rate used to non-dimensionalise the head-rate decoder
+# output (v = V_SCALE * network output): 1 cm/day, PROVISIONAL (OQ12). Sets
+# the scale at initialisation only; units stay m/day.
+HEAD_RATE_SCALE_M_PER_DAY = 0.01
 
 
 class HeadChangeIntegrator(nn.Module):
     """
-    Learned, K-modulated causal integrator mapping recharge Q_i(t) to a
-    predicted head-change series Δh_i(t): higher conductivity K discharges
-    accumulated head faster (a learned analogue of specific storage S_s in
-    the discretized PDE, `S_s ∂h/∂t = ∇·(K∇h) + Q`). Implemented as a
-    depthwise causal 1D convolution over log(1+K)-scaled cumulative Q, kept
-    lightweight and fully differentiable so gradients reach both K and Q
-    from the displacement data-misfit term.
+    Explicit time integration with the REAL time gap (review-2 fix of the
+    integrator that ignored Δt):
+
+        h_k = h_{k-1} + Δt_k · v_k     for k with steps k and k-1 both real
+        increment = 0                  at padding (Δt = 0) and the first real step
+
+    so h = 0 at the first real acquisition, and the backward difference
+    (h_k − h_{k-1})/Δt_k used by the PDE residual equals v_k exactly.
+    Units: day · m/day = m. No learnable parameters.
     """
 
-    def __init__(self, kernel_size: int = 5) -> None:
-        super().__init__()
-        self.kernel_size = kernel_size
-        self.decay_logit = nn.Parameter(torch.tensor(0.0))  # sigmoid -> (0, 1) decay rate
-
-    def forward(self, recharge: torch.Tensor, conductivity: torch.Tensor) -> torch.Tensor:
+    def forward(self, head_rate: torch.Tensor, time_delta_days: torch.Tensor) -> torch.Tensor:
         """
-        recharge:     (B, T) non-negative Q_i(t)
-        conductivity: (B,)   positive K_i
-        returns:      (B, T) Δh_i(t)
+        head_rate:       (B, T) v [m/day]
+        time_delta_days: (B, T) Δt [day], 0 on padding
+        returns:         (B, T) h − h(first real acquisition) [m]
         """
-        decay = torch.sigmoid(self.decay_logit)  # scalar in (0, 1)
-        k_scale = 1.0 / (1.0 + conductivity)     # higher K -> faster dissipation -> smaller head buildup
-        b, t = recharge.shape
-        head = torch.zeros(b, device=recharge.device, dtype=recharge.dtype)
-        outputs = []
-        for step in range(t):
-            head = decay * head + k_scale * recharge[:, step]
-            outputs.append(head.unsqueeze(1))
-        return torch.cat(outputs, dim=1)
+        dt = time_delta_days
+        real = dt > 0
+        step = torch.cat([torch.zeros_like(real[:, :1]), real[:, 1:] & real[:, :-1]], dim=1)
+        increment = torch.where(step, dt * head_rate, torch.zeros_like(head_rate))
+        return torch.cumsum(increment, dim=1)
 
 
 class ARSNet(nn.Module):
@@ -130,6 +136,9 @@ class ARSNet(nn.Module):
         )
 
         self.recharge_decoder = RechargeDecoder(fused_dim=fused_dim, hidden_dim=gat_hidden_dim * 2)
+        self.head_rate_decoder = RechargeDecoder(
+            fused_dim=fused_dim, hidden_dim=gat_hidden_dim * 2, non_negative=False
+        )
         self.head_integrator = HeadChangeIntegrator()
 
         # Storativity S (form (b), provisional): one global value, assumes a
@@ -195,7 +204,8 @@ class ARSNet(nn.Module):
 
         q = self.recharge_decoder(u, rainfall_mm)  # (B, T), non-negative
 
-        delta_h = self.head_integrator(q, k)  # (B, T)
+        v = HEAD_RATE_SCALE_M_PER_DAY * self.head_rate_decoder(u, rainfall_mm)  # (B, T) m/day
+        delta_h = self.head_integrator(v, time_delta_days)  # (B, T) m
 
         # Reference head at the first real acquisition (first step with Δt > 0;
         # padded steps have Δt = 0). Index 0 if a row has no real step.
@@ -213,6 +223,7 @@ class ARSNet(nn.Module):
             temporal_embedding=z,
             storativity=torch.sigmoid(self.storativity_logit),
             skeletal_storage=s_k,
+            head_rate=v,
         )
 
     def skeletal_storage(self) -> torch.Tensor:

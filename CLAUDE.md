@@ -62,7 +62,8 @@ textbook result each step relies on. Never skip steps.
 | runoff coefficient (`RUNOFF_COEFFICIENT`) | c_r | dimensionless, 0.3 (provisional, OQ10) | losses.py |
 | transmissivity (model output `hydraulic_conductivity`, interpreted as T in form (b)) | T = K·b | m²/day (provisional) | network.py |
 | storativity (`ARSNet.storativity_logit` → sigmoid) | S | dimensionless, in (0, 1), init 0.02 (provisional) | network.py |
-| head (model output `predicted_head_change`) | h | m — declared, not enforced (integrator has no units and ignores Δt, review finding 3 note) | network.py |
+| head (model output `predicted_head_change`) | h | m, relative to the first real acquisition; h_k = h_{k−1} + Δt_k·v_k (docs/math/head_integrator.md) | network.py |
+| head rate (model output `head_rate`) | v = ∂h/∂t | m/day; v = 0.01 m/day × decoder output (scale provisional, OQ12) | network.py |
 | physics graph weight (`physics_adjacency`) | a_ij = c_ij / d_ij² | 1/m² (finding 4, docs/math/graph_stencil.md; connectivity provisional, OQ11) | graph.py |
 | attention prior (`adjacency`, GAT only — not physics) | — | dimensionless, 0..1 | graph.py |
 | structure spacing | d_ij | m (haversine) | preprocessing.py |

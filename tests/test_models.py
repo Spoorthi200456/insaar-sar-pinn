@@ -141,7 +141,7 @@ class TestARSNet:
             coherence_mask=batch["coherence_mask"],
         )
         # Include predicted_displacement_cm so the loss also touches
-        # `head_integrator` (and therefore `decay_logit`), which
+        # `head_rate_decoder` (head enters only via displacement), which
         # `recharge_rate`/`hydraulic_conductivity` alone do not exercise.
         # `storativity` is the only path to `storativity_logit` (it enters the
         # PDE residual in the loss, not the forward outputs above).
@@ -193,3 +193,58 @@ class TestIsolatedNodeKeepsOwnFeatures:
         changed = design.clone()
         changed[0] += 2.0  # e.g. a much taller dam with a larger catchment
         assert abs(k_of(design)[0].item() - k_of(changed)[0].item()) > 1e-6
+
+
+class TestHeadIntegratorUsesRealDt:
+    """
+    Review finding 3 note / review-2 item: head must be integrated with the
+    real time gap, h_k = h_{k-1} + Δt_k · v_k, with v_k the predicted head rate
+    [m/day], h = 0 at the first real acquisition and on padding.
+    """
+
+    def _forward(self, model, batch, dt):
+        return model(
+            design_features=batch["design_features"],
+            displacement_cm=batch["displacement_cm"],
+            rainfall_mm=batch["rainfall_mm"],
+            time_delta_days=dt,
+            adjacency=batch["adjacency"],
+            incidence_angle_deg=batch["incidence_angle_deg"],
+            coherence_mask=batch["coherence_mask"],
+        )
+
+    def test_head_increment_is_rate_times_real_dt(self, synthetic_records):
+        batch = _batch_from_records(synthetic_records, sequence_length=16)
+        torch.manual_seed(0)
+        model = ARSNet(design_feature_dim=3).eval()
+        gaps = torch.tensor([12.0, 6.0, 12.0, 24.0] * 4)
+        dt = gaps.expand_as(batch["time_delta_days"]).clone()
+        with torch.no_grad():
+            out = self._forward(model, batch, dt)
+        h, v = out.predicted_head_change, out.head_rate
+        assert torch.allclose(h[:, 0], torch.zeros_like(h[:, 0]))              # reference step
+        assert torch.allclose(h[:, 1:] - h[:, :-1], dt[:, 1:] * v[:, 1:], atol=1e-6)
+
+    def test_head_is_zero_on_padding_and_first_real_step(self, synthetic_records):
+        batch = _batch_from_records(synthetic_records, sequence_length=24)  # 16 real + 8 pad
+        torch.manual_seed(0)
+        model = ARSNet(design_feature_dim=3).eval()
+        with torch.no_grad():
+            out = self._forward(model, batch, batch["time_delta_days"])
+        h = out.predicted_head_change
+        assert (batch["time_delta_days"][:, :8] == 0).all()
+        assert torch.equal(h[:, :9], torch.zeros_like(h[:, :9]))  # 8 pads + first real step
+        assert (h[:, 9:].abs() > 0).any()
+
+    def test_doubling_every_gap_doubles_head_for_the_same_rate(self, synthetic_records):
+        # The decoder sees Δt only through h; with the rate held fixed (same
+        # inputs except Δt is not an input to it), h must scale with elapsed time.
+        batch = _batch_from_records(synthetic_records, sequence_length=16)
+        torch.manual_seed(0)
+        model = ARSNet(design_feature_dim=3).eval()
+        dt = batch["time_delta_days"]
+        with torch.no_grad():
+            v = self._forward(model, batch, dt).head_rate
+            h1 = model.head_integrator(v, dt)
+            h2 = model.head_integrator(v, 2 * dt)
+        assert torch.allclose(h2, 2 * h1, atol=1e-6)

@@ -11,7 +11,7 @@ whether an ARS is recharging or failing?), not by file order.
 |---|---|---|---|
 | 1 | `src/models/losses.py:130` | PDE residual has wrong sign — recharge acts as a sink | **Fixed** |
 | 2 | `src/models/network.py:182` | Deformation coupling: wrong sign, wrong coefficient, no LOS projection | **Fixed** (review 2) |
-| 3 | `src/models/losses.py:123-125` | Storage term has no S_s and no ÷Δt | **Fixed** (integrator Δt still open) |
+| 3 | `src/models/losses.py:123-125` | Storage term has no S_s and no ÷Δt | **Fixed** (integrator Δt fixed in review 2) |
 | 4 | `src/data/dataset.py:214-228` | Physics graph built from minibatch composition | **Fixed** (review 2) |
 | 5 | `src/models/layers.py:126-135` | GAT has no self-loop — isolated nodes get zero embedding | **Fixed** (review 2) |
 | 6 | `src/models/losses.py:147-159` | Q compared against m³/day and against mm | **Fixed** (review 2) |
@@ -113,14 +113,18 @@ author's approval in plan mode before any code changes.
   Δt = 6/12/24/12/6 days, the old storage term was
   0.006/0.012/0.024/0.012/0.006 (proportional to Δt); new S·dh/dt is 1e-4 m/day
   at every step.
-- **Still open (not part of this fix):** `HeadChangeIntegrator`
-  (`src/models/network.py:69-75`) still integrates per step with a fixed decay
-  that ignores Δt, and produces h with no physical units. h is *declared* to
-  be in m, not enforced. Architecture change, needs its own plan.
+- **Fixed in review 2:** `HeadChangeIntegrator` used a fixed per-step decay
+  and ignored Δt, so h had no physical units. It is replaced by
+  h_k = h_{k−1} + Δt_k·v_k with v [m/day] from a signed head-rate decoder,
+  h = 0 at padding and at the first real acquisition. The backward difference
+  in the residual now equals v_k exactly. See `docs/math/head_integrator.md`.
+  Tests: `tests/test_models.py::TestHeadIntegratorUsesRealDt` (3). Before: no
+  `head_rate`, no Δt input (constant q gives the same h for any revisit gap),
+  and 0.37 → 0.73 of phantom head accumulated on 8 padded steps. After: 3 passed.
 - **Caveat:** S is not identifiable from the PDE term alone
   ((S, T, R) → (cS, cT, cR) leaves r unchanged). Report it as a fitted
   coefficient, not as a measured specific yield.
-- **Status:** Fixed (storage term); integrator Δt open.
+- **Status:** Fixed (storage term in review 1; integrator in review 2).
 
 ## 4. Physics graph built from minibatch composition
 

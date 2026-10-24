@@ -322,13 +322,16 @@ class RechargeDecoder(nn.Module):
     """
     Autoregressive-free sequence decoder: unrolls an LSTM initialized from
     the fused node embedding u_i and conditioned at each step on the
-    rainfall forcing, producing Q_i(t) for t = 1..T. Non-negativity is
-    enforced with a softplus output activation (softer than a hard clamp,
-    keeps gradients flowing near zero).
+    rainfall forcing, producing one value per step for t = 1..T.
+
+    `non_negative=True` (recharge R_i(t)): softplus output (softer than a hard
+    clamp, keeps gradients flowing near zero). `non_negative=False` (head rate
+    v_i(t), review-2 integrator fix): signed linear output.
     """
 
-    def __init__(self, fused_dim: int, hidden_dim: int = 64) -> None:
+    def __init__(self, fused_dim: int, hidden_dim: int = 64, non_negative: bool = True) -> None:
         super().__init__()
+        self.non_negative = non_negative
         self.init_hidden = nn.Linear(fused_dim, hidden_dim)
         self.init_cell = nn.Linear(fused_dim, hidden_dim)
         self.cell = nn.LSTMCell(input_size=1, hidden_size=hidden_dim)
@@ -343,7 +346,7 @@ class RechargeDecoder(nn.Module):
         """
         fused:    (B, fused_dim)
         rainfall: (B, T) forcing sequence used to condition each decode step
-        returns:  (B, T) non-negative recharge-rate estimate Q_i(t)
+        returns:  (B, T) per-step output (non-negative if `non_negative`)
         """
         b, t = rainfall.shape
         h = torch.tanh(self.init_hidden(fused))
@@ -354,4 +357,4 @@ class RechargeDecoder(nn.Module):
             h, c = self.cell(inp, (h, c))
             outputs.append(self.output_head(h))
         q = torch.cat(outputs, dim=1)
-        return F.softplus(q)
+        return F.softplus(q) if self.non_negative else q
