@@ -605,5 +605,7 @@ The four fixed findings were re-checked on the current code before any change:
   1b). It is marked `xfail(strict=True)`. See
   `experiments/synthetic_recovery/README.md`.
 - Full suite: **118 passed, 1 xfailed**; ruff and black clean.
+- Author decisions 1–7 (2026-10-24): see `docs/STATUS.md`. Open after them: 21–24, 26–28.
+  Full suite after the decisions: **135 passed, 1 xfailed**.
 - Commits on `review-2` with more than one change: `1c6991c` (README claims,
   finding 15, and the dashboard banner, finding 19; both text-only).

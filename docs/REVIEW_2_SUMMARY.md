@@ -1,7 +1,8 @@
 # Review 2 — summary for a non-expert reader
 
-*2026-10-24. Branch `review-2` (not merged, not pushed). Everything here is about the code
-and **synthetic** data. No real satellite, rainfall or well data has been used.*
+*2026-10-24. Branch `review-2`, merged into `main` locally after the author's decisions
+(not pushed; the branch is kept). Everything here is about the code and **synthetic**
+data. No real satellite, rainfall or well data has been used.*
 
 ## The question the project asks
 
@@ -52,6 +53,31 @@ whole project again. The most important problems were:
    - The README promised things the code does not do. *(15)*
    - The automatic checks on GitHub had never actually run the tests. *(16)*
 
+## Your decisions (2026-10-24) and what they changed
+
+All of these were made **after** the official pre-registered known-answer run failed.
+That run stays the official result.
+
+1. **The aquifer constants learn faster.** S, S_k and L now have their own learning rate
+   in the training code. This is what made ranking from InSAR alone work (run 3 below).
+2. **Design capacity is a soft limit on the season's average recharge,** not a ceiling at
+   every satellite pass. The season is a 122-day monsoon window (provisional).
+3. **Hard rock is out of scope.** The project now covers alluvial aquifers only. The
+   0.04 mm reasoning for your supervisor is in `docs/open_questions.md`.
+4. **Well water levels are an optional training input.** Wells give absolute water levels
+   and the model works with changes, so only the *shape* of the well curve is compared.
+   Training lists the structures without wells, and the API says `has_well_data: false`
+   for them.
+5. **Without wells, the website shows a ranking, not a percentage.** Example: "rank 3 of
+   16, relative recharge", with a one-line explanation. The efficiency percentage appears
+   only when well data is present, and is labelled provisional (see "What is still NOT
+   proven").
+6. **The dashboard compiles.** `npm install` and `npm run build` ran with no errors, so no
+   fixes were needed. npm reports 11 known vulnerabilities in the pinned packages; these
+   were not changed.
+7. **Merged into `main` locally,** after the full suite passed: 135 passed, 1 expected
+   failure. Nothing was pushed.
+
 ## What was changed
 
 - Every fix is a separate commit. Each says what was wrong, gives the derivation with
@@ -60,11 +86,14 @@ whole project again. The most important problems were:
 - Plain-English derivations are in `docs/math/` (7 notes).
 - Every guess the code has to make without real information (sign of the satellite data,
   aquifer stiffness, area of each structure, runoff, pumping and more) is listed in
-  `docs/open_questions.md` (OQ1–OQ19). Each is marked PROVISIONAL.
-- Tests went from 60 to **118 passing**, plus 1 deliberately marked "expected to fail"
-  (below). No existing test was deleted or weakened. A few were updated to supply the new
-  required satellite-angle field, or extended to cover new parameters, with their checks
-  unchanged.
+  `docs/open_questions.md` (OQ1–OQ20). Each is marked PROVISIONAL.
+- Tests went from 60 to **135 passing**, plus 1 deliberately marked "expected to fail"
+  (below). No existing test was deleted or weakened. A few were updated with their checks
+  unchanged:
+  - to supply the new required satellite-angle field;
+  - to cover new parameters;
+  - to give well data to records whose percentage they check (decision 5).
+  The single recovery test was split into two tests of the current code (below).
 
 ## What the tests now prove
 
@@ -104,31 +133,48 @@ than a coin.
 - **A diagnostic second run, with that constant allowed to learn faster** (the change was
   written down before running, but decided after seeing the failure): InSAR-only ranking
   rose to ρ 0.95 and AUROC 1.00. The "known constants" check still failed (44 % error,
-  against a 30 % limit). The reason is that the simulated peak recharge breaks the
-  model's rule that a structure never exceeds its design capacity at any moment. Is
-  design capacity a hard ceiling or an average? That is a definition question for you
-  (OQ19).
-- **So:** the first failure was an optimisation problem, which can be fixed. Not being able
-  to get absolute numbers is a physics problem, which cannot be fixed without extra data.
+  against a 30 % limit).
+- **Run 3, the current code after your decisions 1, 2 and 4:**
+  - Ranking from InSAR alone: ρ 0.95, AUROC 1.00. This **meets the pre-registered
+    ranking marks**, but under a protocol revised after seeing run 1.
+  - "Known constants" check: 42 % error, so it **still fails**.
+  - With wells given as absolute levels with an 87 m datum offset: ρ 0.96, AUROC 1.00. The
+    model removed the offset correctly.
+- **A correction.** After run 2 I said the "known constants" failure came from the
+  per-pass capacity ceiling. Your decision 2 removed that ceiling, and the failure stayed.
+  The capacity penalty had in fact been tiny. So that explanation is withdrawn. What is
+  visible is that the model fits the satellite data less well in that scenario and
+  reaches only 69 % of the true water-level rise. The cause is **not established**.
+- **So:**
+  - The ranking failure was an optimisation problem, and it is now fixed.
+  - Absolute numbers from InSAR alone are impossible: that is physics.
+  - Absolute numbers even with known constants are not yet achieved, for a reason not
+    found.
 
-The test stays in the suite, marked "expected to fail (strict)". If it ever starts passing,
-the suite will flag it so the write-up is revisited.
+In the test suite:
+- "ranks structures from InSAR alone" passes.
+- "recovers absolute recharge with known constants" is marked "expected to fail
+  (strict)". If it ever starts passing, the suite flags it so this write-up is revisited.
 
 ## What is still NOT proven
 
 - That any of this works on **real** data.
-- That InSAR-only ranking works under the *original* protocol (it did not), or on real
-  aquifers. The faster-learning fix was not put into the training code (finding 32, your
-  decision).
-- Anything about **hard-rock** aquifers, where most Indian check dams are. There the ground
-  movement from recharge is about 0.04 mm, far below what Sentinel-1 can see. In the
-  simulation the model could say nothing. Please raise this with your supervisor (OQ8).
-  InSAR might instead detect *structural* failure (dam settlement), which is a different
-  signal this model does not yet look for.
-- **Absolute** recharge or "efficiency" numbers from InSAR alone. They are not
-  determinable. The website's efficiency number should not be read as a real percentage
-  until S_k and S are measured.
-- Ten review findings remain open (21–28, 31, 32), for example a ±10 cm limit that would
+- That InSAR-only ranking works on real aquifers. It is shown only on synthetic alluvial
+  data, and only with training settings changed after the official test failed.
+- **Hard rock** is now out of scope (decision 3): the 0.04 mm signal is invisible to
+  Sentinel-1. InSAR might still detect *structural* failure there (dam settlement), which
+  is a different signal this model does not look for.
+- **Absolute** recharge or efficiency percentages.
+  - From InSAR alone they cannot be determined at all.
+  - **Even with well data** the percentage the website shows depends on the aquifer's
+    storativity S. Wells alone do not pin that down: in run 3 with wells, the ranking was
+    perfect but the absolute recharge was 10× off. The percentage is therefore labelled
+    "provisional", and should not be read as a real percentage until S (and S_k) are
+    measured, e.g. by pumping tests.
+- **Wells at prediction time.** The network learns from wells during training. When you
+  submit new data, the API reports whether wells are present and how well the predicted
+  water level matches them, but the wells do not change the prediction itself.
+- Seven review findings remain open (21–24, 26–28), for example a ±10 cm limit that would
   throw away later data in fast-subsiding areas, and the lack of a validation split. See
   `docs/review.md`.
 
@@ -145,7 +191,8 @@ the suite will flag it so the write-up is revisited.
 4. **IMD gridded rainfall.**
 5. **India-WRIS design records**, including each structure's water-spread area and how its
    design capacity is defined. (OQ9, OQ19)
-6. A decision on the **study region**, preferably alluvial for a first test. (OQ1)
+6. A choice of **alluvial study basin** (decision 3), e.g. in the Indo-Gangetic plain or a
+   coastal delta. (OQ1)
 
 ## Where to look
 
