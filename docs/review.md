@@ -322,7 +322,7 @@ failed before the fix; see each commit message for the before/after output.
 | 16 | `.github/workflows/deploy.yml` | Lint job fails (58 ruff errors, 18 files unformatted), so CI never ran the tests | **Fixed** |
 | 17 | `src/backend/export_onnx.py` | ONNX export path untested | **Fixed** (test added) |
 | 18 | `tests/test_dataset.py` | Collate adjacency test passes trivially on an all-zero matrix | **Fixed** (test strengthened) |
-| 19 | `frontend/components/Dashboard.tsx` | Dashboard presents synthetic, provisional outputs without a warning | **Fixed** (not compiled) |
+| 19 | `frontend/components/Dashboard.tsx` | Dashboard presents synthetic, provisional outputs without a warning | **Fixed** (build verified) |
 | 20 | `src/models/network.py` (recharge decoder) | R starts at ~0.7 m/day (700 mm/day): not non-dimensionalised | **Fixed** |
 | 21 | `src/data/schemas.py::SARObservation` | ±10 cm bound applied to *cumulative* displacement | Open (OQ17) |
 | 22 | `src/data/preprocessing.py::time_deltas_days` | Δt at step 0 is fabricated (copied from step 1) | Open (low) |
@@ -430,7 +430,8 @@ failed before the fix; see each commit message for the before/after output.
   all-zero matrix. It now also requires a real 1 km edge with
   a_ij = 1/(1 km)².
 - **19 Dashboard.** Added a permanent "SYNTHETIC DATA, PROVISIONAL PHYSICS"
-  banner. Not compiled: `npm install` was not run.
+  banner. Build verified on 2026-10-24 (author decision 6): `npm install` +
+  `npm run build` (Next.js 14.2.35) compiled, type-checked and linted with no errors.
 
 ## 20. Recharge output is not scaled to a physical magnitude
 
