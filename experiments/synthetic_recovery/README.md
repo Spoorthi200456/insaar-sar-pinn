@@ -114,3 +114,42 @@ through, and recovery worked.
 
 This is recorded as review finding 30 and fixed in the next commit, with its own failing
 test. The pre-registered thresholds are **not changed**.
+
+### Run 2 (after the finding-30 decoder fix, commit `a249eae`; thresholds unchanged): **FAILED**
+
+Files: `results_run2.csv`, `results_run2.json`.
+
+| scenario | Spearman ρ | AUROC | median rel. err. (working) | R spread across structures (CV; truth 0.75) | verdict |
+|---|---|---|---|---|---|
+| A, InSAR only | 0.26 | 0.57 | 0.96 | 0.002 | **fails** |
+| B, S and S_k known | 0.70 | 0.73 | 0.26 | 0.010 | ρ just reaches 0.70; R almost constant |
+| C, hard rock | 0.03 | 0.47 | 0.98 | 0.00002 | (report only) no information, as expected |
+| D, with wells | **0.95** | **1.00** | **0.19** | 0.69 | (report only) recovers |
+
+**Why A still fails.**
+
+1. **The fitted S_k is 2.3e-4 against a true 5e-3**, and the fitted head is 2 % of the
+   true head. The model never fits the displacement signal: RMSE 0.55 cm against
+   0.30 cm noise, and 0.46 cm against the noise-free signal, which is about the signal
+   itself.
+2. **S_k is limited by the optimiser, not the data.** S_k = 10^(−6 + 4·sigmoid(raw))
+   starts at raw = 0 (1e-4). Adam with lr 1e-3 and a cosine schedule can move a parameter
+   by about Σ lr_t ≈ 0.3 in 600 epochs. raw moved **0.36**, right at that limit, still
+   heading up. The true value needs raw ≈ 2.5. **With this protocol the model cannot
+   reach the true S_k**, so it cannot reproduce the amplitude of the displacement.
+3. Separately, **R is not identifiable in absolute terms from InSAR alone**: only
+   R·S_k/S is (finding-2 plan §7). S stayed near its initial value (0.021 vs 0.05) because
+   nothing in the data pins it. This does not affect ranking, but it does mean scenario A
+   could never test absolute R.
+
+**What it shows.** When the head is observed directly (D: piezometers with 5 cm noise),
+the same model, loss and protocol rank the structures almost perfectly (ρ 0.95) and
+separate every failing structure from every working one (AUROC 1.00). The physics and the
+architecture can do the job. What fails is getting the head *from InSAR alone*, through a
+skeletal-storage coefficient that starts 50× too small and is optimised too slowly.
+
+**Decision needed (asked of the author, not taken here).** Fixing point 2, e.g. by
+initialising S_k from the data's amplitude, giving the global scalars their own learning
+rate, or training longer, is a change to the method chosen *after* seeing a failed test.
+That is the garden-of-forking-paths risk the pre-registration exists to prevent, so it
+needs the author's decision.
