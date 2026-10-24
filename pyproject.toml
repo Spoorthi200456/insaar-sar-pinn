@@ -23,3 +23,4 @@ warn_unused_ignores = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = ["slow: long-running known-answer training test (~2-3 min on CPU)"]

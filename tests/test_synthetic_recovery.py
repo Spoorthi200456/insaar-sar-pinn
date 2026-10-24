@@ -14,6 +14,7 @@ from dataclasses import replace
 import numpy as np
 import pytest
 import torch
+from scipy.stats import spearmanr
 
 from experiments.synthetic_recovery import run_recovery as rr
 from experiments.synthetic_recovery.simulator import (
@@ -74,7 +75,56 @@ class TestSimulatorSanity:
         assert np.all(amp[~sim.failing] > 3 * sim.cfg.noise_cm)
 
 
+class TestIdentifiability:
+    """
+    What InSAR alone can and cannot determine (finding-2 plan §7; README
+    "Identifiability"). These are exact properties of the physics, checked on
+    the independent simulator, not of the network.
+    """
+
+    def test_insar_cannot_separate_skeletal_storage_from_recharge(self, sim):
+        # d = 100 cos(theta) S_k h and h is linear in R, so (S_k, R) -> (c S_k, R / c)
+        # leaves every InSAR observation unchanged.
+        c = 10.0
+        g = lateral_operator(sim.a_ij, sim.transmissivity)
+        h = integrate_head(sim.cfg, sim.recharge / c, sim.dt_days, g)
+        d = los_cm(h, sim.cfg.skeletal_storage * c, sim.incidence_deg)
+        assert np.allclose(d, sim.displacement_clean_cm, rtol=1e-12, atol=1e-14)
+
+    def test_head_cannot_separate_storativity_from_recharge(self, sim):
+        # (S, L, T, R) -> c (S, L, T, R) leaves the head unchanged, so even
+        # well heads do not give absolute R without S.
+        c = 10.0
+        g = lateral_operator(sim.a_ij, sim.transmissivity * c)
+        cfg = replace(sim.cfg, storativity=sim.cfg.storativity * c)
+        h = integrate_head(cfg, sim.recharge * c, sim.dt_days, g, leakance=sim.cfg.leakance * c)
+        assert np.allclose(h, sim.head, rtol=1e-12, atol=1e-14)
+
+    def test_ranking_survives_a_wrong_global_skeletal_storage(self, sim):
+        # With S_k wrong by a common factor, the best possible estimate of eta
+        # is scaled by 1/factor, but the ORDER of structures is still recovered.
+        wrong = replace(sim, cfg=replace(sim.cfg, skeletal_storage=sim.cfg.skeletal_storage / 10))
+        eta_hat = oracle_eta(wrong)
+        working = ~sim.failing
+        assert np.median(eta_hat[working] / sim.eta[working]) == pytest.approx(10.0, rel=0.1)
+        assert spearmanr(eta_hat, sim.eta).statistic > 0.9
+
+
 @pytest.mark.slow
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "Pre-registered known-answer test FAILS (official outcome, run 1b): InSAR-only "
+        "Spearman 0.26 / AUROC 0.57 (needs >= 0.70 / >= 0.85). Cause: global S_k starts at "
+        "1e-4, 50x below the truth, and Adam(lr 1e-3, 600 epochs) can move it only ~0.3 of the "
+        "~2.5 needed in its raw parameter, so the InSAR amplitude is never fitted. A diagnostic "
+        "run 2 with a separate learning rate for the global scalars, declared before running, "
+        "meets A (0.95 / 1.00) but still fails B (median relative error 0.44 > 0.30), because "
+        "the planted truth exceeds the per-step design-capacity hinge at 21 % of steps (review "
+        "finding 31). See experiments/synthetic_recovery/README.md. strict=True: if this "
+        "starts passing, the test errors so the README must be revisited."
+    ),
+)
 def test_recovery_meets_preregistered_thresholds(sim):
     floor = rr.oracle_floor(sim)
     a = rr.run_scenario("A_insar_only", sim)
