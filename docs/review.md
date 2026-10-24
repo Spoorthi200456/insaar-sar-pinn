@@ -16,7 +16,7 @@ whether an ARS is recharging or failing?), not by file order.
 | 5 | `src/models/layers.py:126-135` | GAT has no self-loop — isolated nodes get zero embedding | **Fixed** (review 2) |
 | 6 | `src/models/losses.py:147-159` | Q compared against m³/day and against mm | **Fixed** (review 2) |
 | 7 | `src/models/losses.py:147-159` | Regularizers not masked — padding adds phantom recharge | Open |
-| 8 | `src/models/losses.py:131-132` | PDE loss masked by coherence; residual hard-clamped | Open |
+| 8 | `src/models/losses.py:131-132` | PDE loss masked by coherence; residual hard-clamped | **Fixed** (review 2) |
 | 9 | `src/data/preprocessing.py:91-113` | Rainfall binned by midpoint (non-causal) | **Fixed** |
 | 10 | `src/data/dataset.py:115-116` | Clamped observations used as trusted targets | **Fixed** |
 
@@ -235,7 +235,15 @@ author's approval in plan mode before any code changes.
 - **Proposed fix:** mask the PDE term only by validity (not padding), not by
   coherence; replace the hard clamp with residual normalisation or a Huber
   loss.
-- **Status:** Open.
+- **Fix (review 2):** PDE mask = `pde_valid & seed` (Δt-based validity only,
+  never coherence); the ±1e4 clamp is removed (training already clips the
+  gradient norm at 5). Plain MSE kept; a Huber loss would add a threshold with
+  units of m/day that nothing currently justifies. See `docs/math/masking.md`.
+- **Tests:** `tests/test_losses.py::TestPDEMaskAndClamp` (2). Before: a
+  low-coherence step with r = −1e-3 m/day gave PDE loss **0.0** (expected
+  2.5e-7), and at |r| = 5e4 m/day the gradient w.r.t. R was **0.0**. After: 2
+  passed.
+- **Status:** Fixed.
 
 ## 9. Rainfall binned by midpoint (non-causal) — FIXED
 

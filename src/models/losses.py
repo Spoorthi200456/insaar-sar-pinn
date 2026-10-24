@@ -3,12 +3,12 @@ Composite PINN objective (Module 1):
 
     L = w_PDE * L_PDE + w_data * L_data + w_BC * L_BC + w_reg * L_reg
 
-Every term is masked so that padded timesteps (from `ARSDataset` left-
-padding) and low-coherence/interpolated observations never contribute
-gradient signal from data they were never truly observed at, and every
-sum-of-squares term is computed with a numerically stable mean-reduction
-over the *valid* element count (never a raw sum that can explode with
-batch/sequence size, and never a division by zero when a mask is empty).
+Masking (docs/math/masking.md): the data term uses only reliable
+observations (coherence, quality flag, not interpolated, not padding); the
+PDE term uses every real step (Δt_k > 0 and Δt_{k-1} > 0), whatever the
+coherence (review finding 8); only seed nodes of a graph batch contribute
+(finding 4). Sum-of-squares terms are means over the valid element count
+(no raw sums, no division by zero when a mask is empty).
 """
 
 from __future__ import annotations
@@ -199,8 +199,12 @@ class CompositeARSLoss(nn.Module):
             recharge_rate,
             adjacency,
         )
-        residual = torch.clamp(residual, min=-1e4, max=1e4)  # gradient-explosion guard
-        pde_mask = pde_valid & data_mask
+        # Review finding 8: physics applies at every real step of a seed node,
+        # including low-coherence / interpolated InSAR steps (where it is the
+        # only constraint), so the mask is validity only, never coherence. No
+        # hard clamp: it zeroed the gradient for |r| > 1e4; explosions are
+        # guarded by gradient-norm clipping in the training loop instead.
+        pde_mask = pde_valid & node_rows
         pde_loss = _masked_mse(residual, torch.zeros_like(residual), pde_mask)
 
         # --- Data misfit loss ------------------------------------------ #

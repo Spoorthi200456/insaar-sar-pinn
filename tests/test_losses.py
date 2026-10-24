@@ -267,3 +267,52 @@ class TestRegularizerUnits:
         assert scaled.design_capacity.item() == pytest.approx(base.design_capacity.item(), rel=1e-5)
         assert scaled.mass_balance.item() == pytest.approx(base.mass_balance.item(), rel=1e-5)
         assert base.design_capacity.item() > 0 and base.mass_balance.item() > 0
+
+
+class TestPDEMaskAndClamp:
+    """
+    Review finding 8. The physics term must apply at every real step (Δt > 0
+    for k and k-1), including low-coherence / interpolated InSAR steps where
+    there is no trustworthy data and physics is the only constraint. It must
+    also keep a gradient for large residuals (no hard clamp).
+    """
+
+    def _batch(self, head, recharge, mask):
+        b, t = head.shape
+        return dict(
+            predicted_displacement_cm=torch.zeros(b, t),
+            observed_displacement_cm=torch.zeros(b, t),
+            predicted_head_change=head,
+            hydraulic_conductivity=torch.ones(b),
+            recharge_rate=recharge,
+            design_recharge_capacity=torch.full((b,), 1e12),
+            rainfall_mm=torch.full((b, t), 1e6),
+            adjacency=torch.zeros(b, b),
+            time_delta_days=torch.full((b, t), 12.0),
+            storativity=torch.tensor(0.1),
+            recharge_area_m2=torch.ones(b),
+            catchment_area_m2=torch.ones(b),
+            observation_mask=mask,
+        )
+
+    def test_low_coherence_step_still_constrained_by_physics(self):
+        head = torch.zeros(1, 5)                  # flat head ...
+        recharge = torch.zeros(1, 5)
+        recharge[0, 3] = 1e-3                     # ... but recharge at step 3: r = -1e-3
+        mask = torch.ones(1, 5, dtype=torch.bool)
+        mask[0, 3] = False                        # step 3 has low coherence
+        out = CompositeARSLoss(LossWeights())(**self._batch(head, recharge, mask))
+        # valid PDE steps are k = 1..4 (4 steps); only k = 3 is non-zero
+        assert out.pde.item() == pytest.approx((1e-3) ** 2 / 4, rel=1e-5)
+
+    def test_large_residual_keeps_gradient(self):
+        head = torch.zeros(1, 4)
+        recharge = torch.full((1, 4), 5e4, requires_grad=True)  # |r| = 5e4 m/day > old 1e4 clamp
+        mask = torch.ones(1, 4, dtype=torch.bool)
+        out = CompositeARSLoss(LossWeights(pde=1.0, data=0, boundary=0, design_capacity=0,
+                                           non_negativity=0, mass_balance=0,
+                                           conductivity_smoothness=0))(
+            **self._batch(head, recharge, mask))
+        out.total.backward()
+        assert recharge.grad is not None
+        assert recharge.grad[0, 1:].abs().min().item() > 0
