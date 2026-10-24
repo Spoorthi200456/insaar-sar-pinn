@@ -15,7 +15,7 @@ whether an ARS is recharging or failing?), not by file order.
 | 4 | `src/data/dataset.py:214-228` | Physics graph built from minibatch composition | **Fixed** (review 2) |
 | 5 | `src/models/layers.py:126-135` | GAT has no self-loop — isolated nodes get zero embedding | **Fixed** (review 2) |
 | 6 | `src/models/losses.py:147-159` | Q compared against m³/day and against mm | **Fixed** (review 2) |
-| 7 | `src/models/losses.py:147-159` | Regularizers not masked — padding adds phantom recharge | Open |
+| 7 | `src/models/losses.py:147-159` | Regularizers not masked — padding adds phantom recharge | **Fixed** (review 2) |
 | 8 | `src/models/losses.py:131-132` | PDE loss masked by coherence; residual hard-clamped | **Fixed** (review 2) |
 | 9 | `src/data/preprocessing.py:91-113` | Rainfall binned by midpoint (non-causal) | **Fixed** |
 | 10 | `src/data/dataset.py:115-116` | Clamped observations used as trusted targets | **Fixed** |
@@ -221,7 +221,21 @@ author's approval in plan mode before any code changes.
   length and pushes Q down for short series.
 - **Proposed fix:** pass a validity mask (real step, independent of coherence)
   and apply it to all three regularizers.
-- **Status:** Open.
+- **Fix (review 2):** `CompositeARSLoss(valid_mask=...)` (real acquisitions,
+  independent of coherence; default Δt > 0; the dataset now emits
+  `valid_step_mask`). Capacity and non-negativity are averaged over valid
+  steps of seed nodes; mass balance sums only valid steps. T-smoothness is
+  now the mean over graph edges of (ln T_i − ln T_j)²: dimensionless, and
+  every edge counts once. It was Σ a_ij (T_i − T_j)² / Σ a_ij in (m²/day)²,
+  weighted by the 1/m² stencil. The non-negativity term is kept, documented
+  as inert under softplus.
+- **Tests:** `tests/test_losses.py::TestRegularizersMasked` (3). Before: 6 padded
+  steps raised the capacity penalty from **1.25 to 10.1**; `valid_mask` did not
+  exist; T-smoothness for T = 1, 10, 100 m²/day was **389** (expected (ln 10)² =
+  5.30) and grew with the units of T. The mass-balance part of the padding test
+  already passed before this commit: since finding 6 it is Δt-weighted, so padding
+  (Δt = 0) adds no volume. After: 3 passed.
+- **Status:** Fixed.
 
 ## 8. PDE loss masked by coherence; residual hard-clamped
 

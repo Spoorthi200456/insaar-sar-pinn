@@ -18,7 +18,8 @@ code skipped physics wherever the data was bad.
 |---|---|---|
 | data misfit | k is real **and** the measurement is reliable (coherence ≥ 0.7, not clamped, not interpolated) **and** the structure is a seed | Never fit untrustworthy numbers. |
 | PDE residual | k **and** k−1 are real (Δt_k > 0, Δt_{k−1} > 0) **and** the structure is a seed | The backward difference (h_k − h_{k−1})/Δt_k needs both steps. Coherence is irrelevant to physics. |
-| design capacity, mass balance | k is real, structure is a seed (masking added by the finding-7 fix) | Padding has no rain and no recharge. |
+| design capacity, non-negativity, mass balance | k is real (`valid_mask`, default Δt > 0) **and** the structure is a seed | Padding has no rain and no recharge; the decoder's softplus output there is not water (finding 7). |
+| T smoothness | graph edges out of seed nodes | Compares ln T, so it is dimensionless and the same in any unit of T. |
 
 ## Why there is no hard clamp on the residual
 

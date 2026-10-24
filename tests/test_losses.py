@@ -316,3 +316,68 @@ class TestPDEMaskAndClamp:
         out.total.backward()
         assert recharge.grad is not None
         assert recharge.grad[0, 1:].abs().min().item() > 0
+
+
+class TestRegularizersMasked:
+    """
+    Review finding 7. Left-padded steps (Δt = 0) are not real; the recharge
+    decoder still emits softplus(.) > 0 there, which must not count as recharge.
+    T-smoothness must be dimensionless: it compares log T on graph edges, so a
+    change of units of T (a constant factor) cannot change it.
+    """
+
+    def _batch(self, r, dt, rain, area=1000.0, q=100.0):
+        b, t = r.shape
+        return dict(
+            predicted_displacement_cm=torch.zeros(b, t),
+            observed_displacement_cm=torch.zeros(b, t),
+            predicted_head_change=torch.zeros(b, t),
+            hydraulic_conductivity=torch.ones(b),
+            recharge_rate=r,
+            design_recharge_capacity=torch.full((b,), q),
+            rainfall_mm=rain,
+            adjacency=torch.zeros(b, b),
+            time_delta_days=dt,
+            storativity=torch.tensor(0.02),
+            recharge_area_m2=torch.full((b,), area),
+            catchment_area_m2=torch.full((b,), 1e5),
+            observation_mask=dt > 0,
+        )
+
+    def test_padding_does_not_change_regularizers(self):
+        r = torch.tensor([[0.05, 0.2, 0.3, 0.01]])        # 50, 200, 300, 10 m3/day vs Q = 100
+        dt = torch.full((1, 4), 12.0)
+        rain = torch.tensor([[1.0, 0.0, 2.0, 0.5]])
+        pad = 6
+        r_p = torch.cat([torch.full((1, pad), 0.5), r], dim=1)  # phantom softplus recharge
+        dt_p = torch.cat([torch.zeros(1, pad), dt], dim=1)
+        rain_p = torch.cat([torch.zeros(1, pad), rain], dim=1)
+        loss_fn = CompositeARSLoss(LossWeights())
+        plain = loss_fn(**self._batch(r, dt, rain))
+        padded = loss_fn(**self._batch(r_p, dt_p, rain_p))
+        assert plain.design_capacity.item() > 0 and plain.mass_balance.item() > 0
+        assert padded.design_capacity.item() == pytest.approx(plain.design_capacity.item(), rel=1e-6)
+        assert padded.mass_balance.item() == pytest.approx(plain.mass_balance.item(), rel=1e-6)
+        assert padded.non_negativity.item() == pytest.approx(plain.non_negativity.item(), abs=1e-12)
+
+    def test_explicit_valid_mask_overrides_dt(self):
+        # A single-acquisition series has Δt = 0 but is real: the caller says so.
+        r = torch.tensor([[0.3]])
+        out = CompositeARSLoss(LossWeights())(
+            **self._batch(r, torch.zeros(1, 1), torch.zeros(1, 1)),
+            valid_mask=torch.ones(1, 1, dtype=torch.bool),
+        )
+        assert out.design_capacity.item() == pytest.approx((300.0 / 100.0 - 1.0) ** 2, rel=1e-5)
+
+    def test_t_smoothness_is_dimensionless_log_difference(self):
+        args = self._batch(torch.zeros(3, 2), torch.full((3, 2), 12.0), torch.zeros(3, 2))
+        args["adjacency"] = torch.tensor([[0.0, 2.5e-7, 0.0],
+                                          [2.5e-7, 0.0, 1e-8],
+                                          [0.0, 1e-8, 0.0]])            # 1/m², unequal
+        args["hydraulic_conductivity"] = torch.tensor([1.0, 10.0, 100.0])   # m²/day
+        loss_fn = CompositeARSLoss(LossWeights())
+        base = loss_fn(**args).conductivity_smoothness.item()
+        # every edge is one decade apart: mean (ln 10)^2, independent of a_ij size
+        assert base == pytest.approx(torch.log(torch.tensor(10.0)).item() ** 2, rel=1e-5)
+        args["hydraulic_conductivity"] = args["hydraulic_conductivity"] * 86400.0  # any change of units
+        assert loss_fn(**args).conductivity_smoothness.item() == pytest.approx(base, rel=1e-5)

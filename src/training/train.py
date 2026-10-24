@@ -235,6 +235,7 @@ def train(
                 rainfall_mm=batch["rainfall_mm"].to(device),
                 adjacency=batch["physics_adjacency"].to(device),
                 node_mask=batch["loss_node_mask"].to(device),
+                valid_mask=batch["valid_step_mask"].to(device),
                 time_delta_days=batch["time_delta_days"].to(device),
                 storativity=out.storativity,
                 recharge_area_m2=batch["recharge_area_m2"].to(device),

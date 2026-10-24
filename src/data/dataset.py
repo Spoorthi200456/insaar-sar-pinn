@@ -54,6 +54,7 @@ class ARSSample:
     rainfall_mm: torch.Tensor              # (T,)
     time_delta_days: torch.Tensor          # (T,)
     coherence_mask: torch.Tensor           # (T,) bool, True == reliable observation
+    valid_step_mask: torch.Tensor          # (T,) bool, True == real acquisition (not padding)
     design_features: torch.Tensor          # (Q,)
     coordinates: torch.Tensor              # (2,) lat, lon
     design_recharge_capacity: torch.Tensor  # scalar [m³/day]
@@ -141,6 +142,9 @@ class ARSDataset(Dataset):
         disp_t, rain_t, delta_t, mask_t = self._fixed_length(
             disp_filled, rain_aligned, deltas, reliable_final
         )
+        _, _, _, real_t = self._fixed_length(
+            disp_filled, rain_aligned, deltas, np.ones(len(sar_sorted), dtype=bool)
+        )
 
         design_vec = np.array(
             [getattr(record.design, name) for name in self.DESIGN_FEATURE_NAMES],
@@ -160,6 +164,7 @@ class ARSDataset(Dataset):
             rainfall_mm=torch.tensor(rain_t, dtype=torch.float32),
             time_delta_days=torch.tensor(delta_t, dtype=torch.float32),
             coherence_mask=torch.tensor(mask_t, dtype=torch.bool),
+            valid_step_mask=torch.tensor(real_t, dtype=torch.bool),
             design_features=torch.tensor(design_vec_norm, dtype=torch.float32),
             coordinates=torch.tensor(
                 [record.design.latitude, record.design.longitude], dtype=torch.float32
@@ -252,6 +257,7 @@ class ARSCollateFn:
             "rainfall_mm": torch.stack([s.rainfall_mm for s in samples]),
             "time_delta_days": torch.stack([s.time_delta_days for s in samples]),
             "coherence_mask": torch.stack([s.coherence_mask for s in samples]),
+            "valid_step_mask": torch.stack([s.valid_step_mask for s in samples]),
             "design_features": torch.stack([s.design_features for s in samples]),
             "coordinates": torch.stack([s.coordinates for s in samples]),
             "design_recharge_capacity": torch.stack(

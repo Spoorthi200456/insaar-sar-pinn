@@ -122,6 +122,7 @@ def loss_of(loss_fn: CompositeARSLoss, out, batch: dict):
         recharge_area_m2=batch["recharge_area_m2"],
         catchment_area_m2=batch["catchment_area_m2"],
         observation_mask=batch["coherence_mask"],
+        valid_mask=batch["valid_step_mask"],
     )
 
 

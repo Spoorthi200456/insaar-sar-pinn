@@ -177,6 +177,7 @@ class CompositeARSLoss(nn.Module):
         boundary_mask: torch.Tensor | None = None,           # (B, T) bool, True where boundary_head is known
         initial_head: torch.Tensor | None = None,             # (B,)  h_i(0) if known
         node_mask: torch.Tensor | None = None,  # (B,) bool, True == seed node (finding 4)
+        valid_mask: torch.Tensor | None = None,  # (B, T) bool, True == real acquisition
     ) -> LossBreakdown:
         w = self.weights
         b, t = predicted_displacement_cm.shape
@@ -188,6 +189,16 @@ class CompositeARSLoss(nn.Module):
         data_mask = node_rows if observation_mask is None else observation_mask & node_rows
         node_f = node_mask.float()
         n_nodes = node_f.sum().clamp_min(1.0)
+        # Real acquisitions, independent of coherence (finding 7). Padded steps
+        # have Δt = 0; pass `valid_mask` explicitly for e.g. 1-step series.
+        if valid_mask is None:
+            valid_mask = time_delta_days > 0
+        valid_f = valid_mask.float()
+        n_valid_steps = valid_f.sum(dim=1).clamp_min(1.0)  # (B,)
+
+        def _seed_mean_over_valid_steps(x: torch.Tensor) -> torch.Tensor:
+            per_node = (x * valid_f).sum(dim=1) / n_valid_steps
+            return (per_node * node_f).sum() / n_nodes
 
         # --- PDE residual loss ---------------------------------------- #
         # r = S ∂h/∂t − ∇·(T∇h) − R  [m/day]; see `pde_residual`.
@@ -229,28 +240,34 @@ class CompositeARSLoss(nn.Module):
         volume_rate = recharge_rate * area                         # (B, T) m³/day
         capacity = design_recharge_capacity.unsqueeze(-1)          # (B, 1) m³/day
         design_capacity_penalty = torch.clamp(volume_rate / capacity - 1.0, min=0.0) ** 2
-        design_capacity_loss = (design_capacity_penalty.mean(dim=1) * node_f).sum() / n_nodes
+        design_capacity_loss = _seed_mean_over_valid_steps(design_capacity_penalty)
 
+        # Inert while R comes from a softplus (R >= 0 by construction); kept as a
+        # guard for decoders without that constraint.
         non_negativity_penalty = torch.clamp(-recharge_rate, min=0.0) ** 2
-        non_negativity_loss = (non_negativity_penalty.mean(dim=1) * node_f).sum() / n_nodes
+        non_negativity_loss = _seed_mean_over_valid_steps(non_negativity_penalty)
 
         # Mass balance: recharge volume Σ R·A·Δt [m³] cannot exceed the rain
         # volume that can reach the structure, Σ P/1000·(A + c_r·A_catch) [m³]
         # (direct rain on the footprint + runoff from the catchment).
-        recharge_volume = (volume_rate * time_delta_days).sum(dim=1)            # (B,) m³
+        recharge_volume = (volume_rate * time_delta_days * valid_f).sum(dim=1)  # (B,) m³
         contributing_area = recharge_area_m2 + self.runoff_coefficient * catchment_area_m2
-        inflow_volume = (rainfall_mm / MM_PER_M).sum(dim=1) * contributing_area  # (B,) m³
+        rain_m = (rainfall_mm * valid_f).sum(dim=1) / MM_PER_M
+        inflow_volume = rain_m * contributing_area                               # (B,) m³
         volume_scale = inflow_volume + _MASS_BALANCE_FLOOR_M * recharge_area_m2
         mass_balance_per_node = (
             torch.clamp((recharge_volume - inflow_volume) / volume_scale, min=0.0) ** 2
         )
         mass_balance_loss = (mass_balance_per_node * node_f).sum() / n_nodes
 
-        # Spatial smoothness of K via the same graph Laplacian, applied to
-        # the (per-node, time-invariant) conductivity field.
-        k_diff = hydraulic_conductivity.unsqueeze(0) - hydraulic_conductivity.unsqueeze(1)  # (B,B)
-        seed_adj = adjacency * node_f.unsqueeze(-1)  # edges out of seed nodes only
-        smoothness_loss = (seed_adj * k_diff ** 2).sum() / seed_adj.sum().clamp_min(_EPS)
+        # Spatial smoothness of T on graph edges (finding 7): mean over edges out
+        # of seed nodes of (ln T_i − ln T_j)². Dimensionless, so independent of
+        # the units of T, and every edge counts once (the 1/m² stencil weight
+        # sizes flow, not similarity).
+        log_t = torch.log(hydraulic_conductivity.clamp_min(_EPS))
+        log_diff_sq = (log_t.unsqueeze(0) - log_t.unsqueeze(1)) ** 2              # (B, B)
+        edges = (adjacency > 0).float() * node_f.unsqueeze(-1)
+        smoothness_loss = (edges * log_diff_sq).sum() / edges.sum().clamp_min(1.0)
 
         total = (
             w.pde * pde_loss
