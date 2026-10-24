@@ -19,6 +19,7 @@ the API and dashboard remain fully functional end-to-end.
 from __future__ import annotations
 
 import logging
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -68,6 +69,11 @@ class InferenceEngine:
 
         self._session = None
         self._torch_model: ARSNet | None = None
+        # Serialises use of the shared eager model (review finding 14): the
+        # MC-dropout pass flips it to train mode, and API requests run in
+        # worker threads, so without this a concurrent request could make its
+        # point prediction with dropout on.
+        self._model_lock = threading.Lock()
         self.backend_name = "uninitialized"
         self.active_provider: str | None = None
 
@@ -208,8 +214,9 @@ class InferenceEngine:
             raw = self._run_onnx(batch)
             uncertainty = None
         else:
-            raw = self._run_torch(batch)
-            uncertainty = self._mc_dropout_uncertainty(batch)
+            with self._model_lock:
+                raw = self._run_torch(batch)
+                uncertainty = self._mc_dropout_uncertainty(batch)
 
         design_capacity = batch["design_recharge_capacity"].numpy()       # m³/day
         recharge_area = batch["recharge_area_m2"].numpy()                  # m²
@@ -277,6 +284,10 @@ class InferenceEngine:
         batch = self._build_batch_tensors(records, edges=edges or [])
         idx = batch["structure_ids"].index(structure_id)
 
+        with self._model_lock:
+            return self._explain_locked(model, batch, idx)
+
+    def _explain_locked(self, model: ARSNet, batch: dict, idx: int) -> dict[str, float]:
         design = batch["design_features"].clone().requires_grad_(True)
         rainfall = batch["rainfall_mm"].clone().requires_grad_(True)
         displacement = batch["displacement_cm"].clone().requires_grad_(True)

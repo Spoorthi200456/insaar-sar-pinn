@@ -78,3 +78,38 @@ def test_displacement_series_aligned_with_observations(engine):
     recs = _records()
     p = engine.predict(recs)[0]
     assert len(p.predicted_displacement_cm) == len(recs[0].sar_series) == N_REAL
+
+
+def test_concurrent_requests_never_predict_with_dropout_on():
+    """
+    Review finding 14. /predict runs in worker threads (asyncio.to_thread). The
+    MC-dropout pass switches the SHARED model to train mode; a concurrent
+    request must never run its point prediction with dropout active.
+    """
+    import threading
+
+    eng = InferenceEngine(onnx_path=None, torch_checkpoint_path=None, sequence_length=SEQ)
+    model = eng._torch_model
+    real_forward = model.forward
+    in_mc = threading.Event()
+    seen = []  # (thread name, model.training) for every forward call
+
+    def spy(*args, **kwargs):
+        name = threading.current_thread().name
+        seen.append((name, model.training))
+        if name == "A" and model.training and not in_mc.is_set():
+            in_mc.set()          # A is now inside MC dropout, model in train mode
+            threading.Event().wait(1.0)  # hold it there long enough for B to collide
+        return real_forward(*args, **kwargs)
+
+    model.forward = spy
+    records = _records()
+    a = threading.Thread(target=eng.predict, args=(records,), name="A")
+    a.start()
+    assert in_mc.wait(10.0)
+    b = threading.Thread(target=eng.predict, args=(records,), name="B")
+    b.start()
+    a.join(30.0)
+    b.join(30.0)
+    b_point = [training for name, training in seen if name == "B"][0]  # B's first call = point prediction
+    assert b_point is False

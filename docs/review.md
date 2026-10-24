@@ -317,6 +317,7 @@ failed before the fix; see each commit message for the before/after output.
 | 11 | `src/models/losses.py::pde_residual` | Flow equation has no sink: head can only rise | **Fixed** |
 | 12 | `src/backend/inference_engine.py::predict` | API verdict compares m/day with m³/day; padding averaged in | **Fixed** |
 | 13 | `src/backend/inference_engine.py::explain`, `api.py` | /explain drops surveyed edges, so its residual uses another graph | **Fixed** |
+| 14 | `src/backend/inference_engine.py::_mc_dropout_uncertainty` | Concurrent requests can predict with dropout on | **Fixed** |
 
 ## 11. Flow equation has no sink
 
@@ -376,6 +377,22 @@ failed before the fix; see each commit message for the before/after output.
   adjacency seen by the residual had a_01 = **0.0** despite the submitted edge.
   After: > 0. Passed.
 - **Status:** Fixed.
+
+## 14. Concurrent requests can predict with dropout switched on
+
+- **Where:** `_mc_dropout_uncertainty` calls `model.train()` on the one shared
+  eager model; `/predict`, `/explain` and the WebSocket all run the engine in
+  worker threads (`asyncio.to_thread`).
+- **Failure scenario:** request B's point prediction runs while request A is
+  inside its MC-dropout loop, so B's K, R and verdict are one random dropout
+  sample, different on every call.
+- **Fix:** a `threading.Lock` serialises model use in `predict` (point and
+  MC-dropout passes together) and `explain`.
+- **Test:** `tests/test_inference.py::test_concurrent_requests_never_predict_with_dropout_on`
+  holds A inside MC dropout and starts B. Before: B's point prediction ran
+  with `model.training == True` (failed). After: passed.
+- **Status:** Fixed. The cost is that eager-model requests are serialised;
+  the ONNX path is unaffected.
 
 ---
 
