@@ -250,3 +250,28 @@ class TestHeadIntegratorUsesRealDt:
             h1 = model.head_integrator(v, dt)
             h2 = model.head_integrator(v, 2 * dt)
         assert torch.allclose(h2, 2 * h1, atol=1e-6)
+
+
+class TestRechargeOutputScale:
+    """
+    Review finding 20. Before training, R must start at a physically plausible
+    magnitude for infiltration through a structure bed (mm to a few cm per
+    day), not ~0.7 m/day (700 mm/day) from an unscaled softplus.
+    """
+
+    def test_initial_recharge_is_plausible(self, synthetic_records):
+        batch = _batch_from_records(synthetic_records, sequence_length=16)
+        torch.manual_seed(0)
+        model = ARSNet(design_feature_dim=3).eval()
+        with torch.no_grad():
+            out = model(
+                design_features=batch["design_features"],
+                displacement_cm=batch["displacement_cm"],
+                rainfall_mm=batch["rainfall_mm"],
+                time_delta_days=batch["time_delta_days"],
+                adjacency=batch["adjacency"],
+                incidence_angle_deg=batch["incidence_angle_deg"],
+                coherence_mask=batch["coherence_mask"],
+            )
+        mean_r = out.recharge_rate.mean().item()
+        assert 1e-4 < mean_r < 5e-2  # 0.1 mm/day .. 50 mm/day

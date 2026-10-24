@@ -318,6 +318,7 @@ failed before the fix; see each commit message for the before/after output.
 | 12 | `src/backend/inference_engine.py::predict` | API verdict compares m/day with m³/day; padding averaged in | **Fixed** |
 | 13 | `src/backend/inference_engine.py::explain`, `api.py` | /explain drops surveyed edges, so its residual uses another graph | **Fixed** |
 | 14 | `src/backend/inference_engine.py::_mc_dropout_uncertainty` | Concurrent requests can predict with dropout on | **Fixed** |
+| 20 | `src/models/network.py` (recharge decoder) | R starts at ~0.7 m/day (700 mm/day): not non-dimensionalised | **Fixed** |
 
 ## 11. Flow equation has no sink
 
@@ -393,6 +394,24 @@ failed before the fix; see each commit message for the before/after output.
   with `model.training == True` (failed). After: passed.
 - **Status:** Fixed. The cost is that eager-model requests are serialised;
   the ONNX path is unaffected.
+
+## 20. Recharge output is not scaled to a physical magnitude
+
+(Numbered 20 because findings 15–19 and 21–25 are grouped in the "open /
+documentation" section below.)
+
+- **Where:** `ARSNet.forward`, `q = softplus(decoder(...))`.
+- **Problem:** softplus of an O(1) network output is ≈ 0.7 m/day = 700 mm/day
+  at initialisation, about 100× typical structure-bed infiltration
+  (mm to a few cm per day). This is the origin of the review-1 demo's
+  "R ≈ 170 mm/day, 29× rainfall". The physical penalties can pull R down, but
+  every early epoch is spent undoing an absurd starting scale.
+- **Fix:** R = 0.01 m/day × softplus(·), mirroring the head-rate scale
+  (finding 3 note). This is non-dimensionalisation: R is still in m/day and
+  can reach any value. PROVISIONAL scale (OQ16).
+- **Test:** `tests/test_models.py::TestRechargeOutputScale`. Before: mean R at
+  init **0.709 m/day** (failed; bound 0.1–50 mm/day). After: passed.
+- **Status:** Fixed.
 
 ---
 

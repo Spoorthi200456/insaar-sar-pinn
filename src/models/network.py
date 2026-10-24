@@ -60,6 +60,10 @@ class ARSNetOutput:
 # output (v = V_SCALE * network output): 1 cm/day, PROVISIONAL (OQ12). Sets
 # the scale at initialisation only; units stay m/day.
 HEAD_RATE_SCALE_M_PER_DAY = 0.01
+# Characteristic recharge flux through a structure bed, same role for R
+# (review finding 20): R = R_SCALE * softplus(.), so R starts near
+# 0.01 * ln 2 ~ 7 mm/day instead of ~700 mm/day. PROVISIONAL (OQ16). Units m/day.
+RECHARGE_SCALE_M_PER_DAY = 0.01
 
 
 class HeadChangeIntegrator(nn.Module):
@@ -209,7 +213,7 @@ class ARSNet(nn.Module):
         log_k = self.k_head(u).squeeze(-1)
         k = torch.exp(torch.clamp(log_k, min=-10.0, max=10.0))  # numerical stability guard
 
-        q = self.recharge_decoder(u, rainfall_mm)  # (B, T), non-negative
+        q = RECHARGE_SCALE_M_PER_DAY * self.recharge_decoder(u, rainfall_mm)  # (B, T) m/day, >= 0
 
         v = HEAD_RATE_SCALE_M_PER_DAY * self.head_rate_decoder(u, rainfall_mm)  # (B, T) m/day
         delta_h = self.head_integrator(v, time_delta_days)  # (B, T) m

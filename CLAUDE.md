@@ -58,7 +58,7 @@ textbook result each step relies on. Never skip steps.
 | radar incidence angle | θ | degrees, 20–50 | schemas.py |
 | rainfall | P | mm per InSAR interval | dataset.py |
 | design recharge capacity | Q_design | m³/day | schemas.py |
-| recharge (model output `recharge_rate`) | R | m/day — declared, not enforced (provisional). Regularizers use R·A [m³/day] and Σ R·A·Δt [m³] (finding 6, docs/math/recharge_units.md) | network.py |
+| recharge (model output `recharge_rate`) | R | m/day; R = 0.01 m/day × softplus(decoder) (scale provisional, OQ16; finding 20). Regularizers use R·A [m³/day] and Σ R·A·Δt [m³] (finding 6, docs/math/recharge_units.md) | network.py |
 | structure recharge area (`effective_recharge_area_m2`) | A | m² (provisional default V/h, OQ9) | schemas.py |
 | catchment area | A_catch | m² in tensors (km² in schema) | dataset.py |
 | runoff coefficient (`RUNOFF_COEFFICIENT`) | c_r | dimensionless, 0.3 (provisional, OQ10) | losses.py |
