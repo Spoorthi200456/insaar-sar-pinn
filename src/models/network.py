@@ -53,6 +53,7 @@ class ARSNetOutput:
     storativity: torch.Tensor                 # scalar S [dimensionless], in (0, 1)
     skeletal_storage: torch.Tensor            # scalar S_k [dimensionless], in (1e-6, 1e-2)
     head_rate: torch.Tensor                   # (B, T) v_i(t) = ∂h/∂t estimate [m/day]
+    leakance: torch.Tensor                    # scalar L [1/day], in (1e-6, 1e-1)
 
 
 # Characteristic head rate used to non-dimensionalise the head-rate decoder
@@ -154,6 +155,12 @@ class ARSNet(nn.Module):
         # Global because per-structure S_k is not identifiable without wells.
         self.skeletal_storage_raw = nn.Parameter(torch.tensor(0.0))
 
+        # Leakance L = K'/b' [1/day] of the Hantush sink −L·h (finding 11,
+        # PROVISIONAL, OQ13): one global value, log10 L = −6 + 5*sigmoid(raw),
+        # so 1e-6 < L < 1e-1 1/day (recession time S/L from days to millennia
+        # for S ~ 0.02), init 1e-3 (raw = logit(0.6)).
+        self.leakance_raw = nn.Parameter(torch.logit(torch.tensor(0.6)))
+
         self.fused_dim = fused_dim
 
     def forward(
@@ -224,7 +231,12 @@ class ARSNet(nn.Module):
             storativity=torch.sigmoid(self.storativity_logit),
             skeletal_storage=s_k,
             head_rate=v,
+            leakance=self.leakance(),
         )
+
+    def leakance(self) -> torch.Tensor:
+        """L [1/day], 1e-6 < L < 1e-1."""
+        return torch.pow(10.0, -6.0 + 5.0 * torch.sigmoid(self.leakance_raw))
 
     def skeletal_storage(self) -> torch.Tensor:
         """S_k [dimensionless], 1e-6 < S_k < 1e-2."""

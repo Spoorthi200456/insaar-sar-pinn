@@ -74,18 +74,24 @@ def pde_residual(
     transmissivity: torch.Tensor,
     recharge_m_per_day: torch.Tensor,
     adjacency: torch.Tensor,
+    leakance_per_day: torch.Tensor | float = 0.0,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
-    Residual of the depth-integrated flow equation (form (b), provisional):
+    Residual of the depth-integrated flow equation with Hantush leakage
+    (form (b), provisional; review finding 11, docs/math/flow_equation_leakage.md):
 
-        r = S ∂h/∂t − ∇·(T∇h) − R          every term in m/day
+        S ∂h/∂t = ∇·(T∇h) − L (h − h_ref) + R,   h_ref = 0
+        r = S ∂h/∂t − ∇·(T∇h) + L h − R          every term in m/day
 
     head_m:             (B, T)  h [m]
     time_delta_days:    (B, T)  Δt_k = t_k − t_{k−1} [day]; 0 on padded steps
     storativity:        scalar or (B,)  S [dimensionless]
     transmissivity:     (B,)    T [m²/day]
     recharge_m_per_day: (B, T)  R [m/day], R > 0 = water INTO the aquifer
-    adjacency:          (B, B)  a_ij
+    adjacency:          (B, B)  a_ij [1/m²]
+    leakance_per_day:   scalar or (B,)  L = K'/b' [1/day]; L·h [m/day] is the
+                        drainage to the regional aquifer. 0 = no sink (old
+                        equation); ARSNet always supplies its learned L.
 
     ∂h/∂t uses the backward difference (h_k − h_{k−1}) / Δt_k, which is only
     defined when both k and k−1 are real acquisitions (Δt > 0). Step 0, padded
@@ -105,7 +111,10 @@ def pde_residual(
     s = storativity.reshape(-1, 1) if storativity.dim() > 0 else storativity
     storage_term = s * dh_dt
     divergence = _weighted_laplacian_divergence(transmissivity, head_m, adjacency)
-    return storage_term - divergence - recharge_m_per_day, valid
+    leak = torch.as_tensor(leakance_per_day, dtype=head_m.dtype, device=head_m.device)
+    leak = leak.reshape(-1, 1) if leak.dim() > 0 else leak
+    leakage_term = leak * head_m  # implicit in h_k, consistent with the backward difference
+    return storage_term - divergence + leakage_term - recharge_m_per_day, valid
 
 
 @dataclass
@@ -172,6 +181,7 @@ class CompositeARSLoss(nn.Module):
         storativity: torch.Tensor,                    # scalar  S [dimensionless]
         recharge_area_m2: torch.Tensor,               # (B,)    A, structure recharge area [m²]
         catchment_area_m2: torch.Tensor,              # (B,)    A_catch [m²]
+        leakance: torch.Tensor | float = 0.0,         # scalar  L [1/day] (finding 11)
         observation_mask: torch.Tensor | None = None,      # (B, T) bool, True == reliable
         boundary_head: torch.Tensor | None = None,          # (B, T) known head, if any
         boundary_mask: torch.Tensor | None = None,           # (B, T) bool, True where boundary_head is known
@@ -201,7 +211,7 @@ class CompositeARSLoss(nn.Module):
             return (per_node * node_f).sum() / n_nodes
 
         # --- PDE residual loss ---------------------------------------- #
-        # r = S ∂h/∂t − ∇·(T∇h) − R  [m/day]; see `pde_residual`.
+        # r = S ∂h/∂t − ∇·(T∇h) + L h − R  [m/day]; see `pde_residual`.
         residual, pde_valid = pde_residual(
             predicted_head_change,
             time_delta_days,
@@ -209,6 +219,7 @@ class CompositeARSLoss(nn.Module):
             hydraulic_conductivity,
             recharge_rate,
             adjacency,
+            leakance,
         )
         # Review finding 8: physics applies at every real step of a seed node,
         # including low-coherence / interpolated InSAR steps (where it is the

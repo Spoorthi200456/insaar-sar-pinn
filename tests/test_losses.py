@@ -381,3 +381,72 @@ class TestRegularizersMasked:
         assert base == pytest.approx(torch.log(torch.tensor(10.0)).item() ** 2, rel=1e-5)
         args["hydraulic_conductivity"] = args["hydraulic_conductivity"] * 86400.0  # any change of units
         assert loss_fn(**args).conductivity_smoothness.item() == pytest.approx(base, rel=1e-5)
+
+
+class TestLeakageSink:
+    """
+    Review finding 11. With R >= 0 and no sink, an isolated node's head can only
+    rise, so a dry-season recession is unexplainable. Form (b) with Hantush
+    leakage: S ∂h/∂t = ∇·(T∇h) − L (h − h_ref) + R, h_ref = 0 (h is relative to
+    the first acquisition). Residual r = S ∂h/∂t − ∇·(T∇h) + L h − R  [m/day].
+    Derivation: docs/math/flow_equation_leakage.md.
+    """
+
+    S, L = 0.05, 0.05 / 60.0  # 60-day recession time scale S/L
+
+    def _recession(self, h0=2.0, dt_days=(12.0, 12.0, 6.0, 24.0, 12.0)):
+        # exact backward-Euler recession with R = 0: h_k = h_{k-1} / (1 + Δt L / S)
+        h = [h0]
+        for dt in dt_days[1:]:
+            h.append(h[-1] / (1.0 + dt * self.L / self.S))
+        return (torch.tensor([h], dtype=torch.float64),
+                torch.tensor([list(dt_days)], dtype=torch.float64))
+
+    def test_pure_recession_without_recharge_has_zero_residual(self):
+        h, dt = self._recession()
+        r, valid = pde_residual(h, dt, torch.tensor(self.S, dtype=torch.float64),
+                                torch.ones(1, dtype=torch.float64), torch.zeros_like(h),
+                                torch.zeros(1, 1, dtype=torch.float64),
+                                leakance_per_day=torch.tensor(self.L, dtype=torch.float64))
+        assert valid[0, 1:].all()
+        assert torch.allclose(r[0, 1:], torch.zeros(4, dtype=torch.float64), atol=1e-15)
+
+    def test_leakance_units_balance_storage(self):
+        # one step: S (h1 - h0)/Δt + L h1 - R = 0  <=>  R = S Δh/Δt + L h1 [m/day]
+        h = torch.tensor([[0.0, 1.0]], dtype=torch.float64)
+        dt = torch.tensor([[10.0, 10.0]], dtype=torch.float64)
+        r, _ = pde_residual(h, dt, torch.tensor(0.05, dtype=torch.float64),
+                            torch.ones(1, dtype=torch.float64),
+                            torch.full_like(h, 0.05 * 0.1 + 1e-3),
+                            torch.zeros(1, 1, dtype=torch.float64),
+                            leakance_per_day=torch.tensor(1e-3, dtype=torch.float64))
+        assert r[0, 1].item() == pytest.approx(0.0, abs=1e-15)
+
+    def test_model_exposes_bounded_global_leakance(self, synthetic_records):
+        from src.data.dataset import ARSDataset, make_collate_fn
+        from src.models.network import ARSNet
+
+        ds = ARSDataset(synthetic_records, sequence_length=16)
+        batch = make_collate_fn()([ds[i] for i in range(len(ds))])
+        out = ARSNet(design_feature_dim=3)(
+            design_features=batch["design_features"], displacement_cm=batch["displacement_cm"],
+            rainfall_mm=batch["rainfall_mm"], time_delta_days=batch["time_delta_days"],
+            adjacency=batch["adjacency"], incidence_angle_deg=batch["incidence_angle_deg"],
+            coherence_mask=batch["coherence_mask"])
+        assert out.leakance.dim() == 0
+        assert out.leakance.item() == pytest.approx(1e-3, rel=1e-4)  # init [1/day]
+        assert 1e-6 < out.leakance.item() < 1e-1
+
+    def test_composite_loss_uses_leakance(self):
+        h, dt = self._recession()
+        h, dt = h.float(), dt.float()
+        args = dict(
+            predicted_displacement_cm=torch.zeros_like(h), observed_displacement_cm=torch.zeros_like(h),
+            predicted_head_change=h, hydraulic_conductivity=torch.ones(1),
+            recharge_rate=torch.zeros_like(h), design_recharge_capacity=torch.full((1,), 1e6),
+            rainfall_mm=torch.zeros_like(h), adjacency=torch.zeros(1, 1), time_delta_days=dt,
+            storativity=torch.tensor(self.S), recharge_area_m2=torch.ones(1),
+            catchment_area_m2=torch.ones(1))
+        loss_fn = CompositeARSLoss(LossWeights())
+        assert loss_fn(**args).pde.item() > 1e-7                       # no sink: recession unexplained
+        assert loss_fn(**args, leakance=torch.tensor(self.L)).pde.item() < 1e-12

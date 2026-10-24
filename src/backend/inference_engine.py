@@ -294,6 +294,7 @@ class InferenceEngine:
                 out.hydraulic_conductivity,
                 out.recharge_rate,
                 batch["physics_adjacency"],
+                out.leakance,
             )
             pde_residual_norm = float(torch.norm(residual[idx][valid[idx]]).item())
 

@@ -306,6 +306,37 @@ author's approval in plan mode before any code changes.
 
 ---
 
+# Review 2 — fresh review (2026-10-24, branch `review-2`)
+
+Whole repository re-read: `src/`, `tests/`, `scripts/`, backend, frontend,
+CI and README. Findings 11+ are new. Each fixed finding has a test that
+failed before the fix; see each commit message for the before/after output.
+
+| # | Where | Short title | Status |
+|---|---|---|---|
+| 11 | `src/models/losses.py::pde_residual` | Flow equation has no sink: head can only rise | **Fixed** |
+
+## 11. Flow equation has no sink
+
+- **Where:** `src/models/losses.py::pde_residual` (form (b) as in CLAUDE.md).
+- **Problem:** S ∂h/∂t = ∇·(T∇h) + R with R ≥ 0 (softplus). For an isolated
+  structure (most of them: ~50 km apart, 5 km radius), the only allowed head
+  change is a rise. A dry-season recession has r = S ∂h/∂t < 0, and any
+  R ≥ 0 makes it worse.
+- **Failure scenario:** every real recession is a physics violation. The
+  model must either fit falling InSAR displacement with a rising head
+  (contradicting the data) or pay a PDE penalty, which biases R and T.
+- **Fix:** Hantush leakage −L(h − h_ref), h_ref = 0, one global learnable
+  L ∈ (1e-6, 1e-1) /day. Derivation: `docs/math/flow_equation_leakage.md`.
+  Pumping is not modelled (OQ14).
+- **Tests:** `tests/test_losses.py::TestLeakageSink` (4). Before: the old
+  residual of an exact recession was −1.4e-3 … −7.5e-4 m/day; `leakance_per_day`
+  and `ARSNet.leakance` did not exist (3 failed; the composite test was added
+  with the fix). After: 4 passed.
+- **Status:** Fixed.
+
+---
+
 ## Verification log
 
 ### Review 2, step 1 (2026-10-24, branch `review-2` from `main` @ `cd55d40`)

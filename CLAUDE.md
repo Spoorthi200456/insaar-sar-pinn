@@ -26,8 +26,10 @@ textbook result each step relies on. Never skip steps.
 - Flow, form (a), 3D: S_s ∂h/∂t = ∇·(K ∇h) + Q        (Q > 0 = recharge INTO the aquifer)
   Residual: r = S_s ∂h/∂t − ∇·(K ∇h) − Q   — every term in 1/day.
 - Flow, form (b), depth-integrated 2D — USED IN CODE (provisional, confirm against data source):
-  S ∂h/∂t = ∇·(T ∇h) + R,  with S = S_s·b (confined) or S_y (unconfined), T = K·b.
-  Residual: r = S ∂h/∂t − ∇·(T ∇h) − R   — every term in m/day.
+  S ∂h/∂t = ∇·(T ∇h) − L (h − h_ref) + R,  with S = S_s·b (confined) or S_y (unconfined), T = K·b,
+  L = K′/b′ the Hantush leakance [1/day], h_ref = 0 (review finding 11,
+  docs/math/flow_equation_leakage.md; OQ13). Pumping not modelled (OQ14).
+  Residual: r = S ∂h/∂t − ∇·(T ∇h) + L h − R   — every term in m/day.
   Implemented in `src/models/losses.py::pde_residual`; ∂h/∂t is the backward
   difference (h_k − h_{k−1})/Δt_k, valid only when steps k and k−1 are both
   real acquisitions. Assumes Dupuit–Forchheimer (horizontal flow).
@@ -67,6 +69,7 @@ textbook result each step relies on. Never skip steps.
 | physics graph weight (`physics_adjacency`) | a_ij = c_ij / d_ij² | 1/m² (finding 4, docs/math/graph_stencil.md; connectivity provisional, OQ11) | graph.py |
 | attention prior (`adjacency`, GAT only — not physics) | — | dimensionless, 0..1 | graph.py |
 | structure spacing | d_ij | m (haversine) | preprocessing.py |
+| leakance (`ARSNet.leakance`) | L = K′/b′ | 1/day, global, (1e-6, 1e-1), init 1e-3 (provisional, OQ13) | network.py |
 | time step | Δt | days (0 on padded steps) | dataset.py |
 
 ## Hard rules

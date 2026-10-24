@@ -144,12 +144,14 @@ class TestARSNet:
         # `head_rate_decoder` (head enters only via displacement), which
         # `recharge_rate`/`hydraulic_conductivity` alone do not exercise.
         # `storativity` is the only path to `storativity_logit` (it enters the
-        # PDE residual in the loss, not the forward outputs above).
+        # PDE residual in the loss, not the forward outputs above); the same
+        # holds for `leakance` -> `leakance_raw` (finding 11).
         loss = (
             out.recharge_rate.sum()
             + out.hydraulic_conductivity.sum()
             + out.predicted_displacement_cm.sum()
             + out.storativity
+            + out.leakance
         )
         loss.backward()
         missing_grad = [name for name, p in model.named_parameters() if p.grad is None]
