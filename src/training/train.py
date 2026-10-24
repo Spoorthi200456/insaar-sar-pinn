@@ -236,6 +236,8 @@ def train(
                 adjacency=batch["adjacency"].to(device),
                 time_delta_days=batch["time_delta_days"].to(device),
                 storativity=out.storativity,
+                recharge_area_m2=batch["recharge_area_m2"].to(device),
+                catchment_area_m2=batch["catchment_area_m2"].to(device),
                 observation_mask=batch["coherence_mask"].to(device),
             )
 

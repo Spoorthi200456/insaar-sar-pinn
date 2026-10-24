@@ -37,6 +37,8 @@ from src.data.schemas import ARSTelemetryRecord, DataQualityFlag, GraphEdge
 # Observations whose stored value is not the true measurement (clamped to the
 # +/-10 cm bound by the schema, or explicitly missing) must never be used as
 # a data-misfit target.
+M2_PER_KM2 = 1.0e6
+
 _UNRELIABLE_FLAGS = (DataQualityFlag.OUT_OF_BOUNDS_CLAMPED, DataQualityFlag.MISSING)
 
 
@@ -51,7 +53,9 @@ class ARSSample:
     coherence_mask: torch.Tensor           # (T,) bool, True == reliable observation
     design_features: torch.Tensor          # (Q,)
     coordinates: torch.Tensor              # (2,) lat, lon
-    design_recharge_capacity: torch.Tensor  # scalar
+    design_recharge_capacity: torch.Tensor  # scalar [m³/day]
+    recharge_area_m2: torch.Tensor          # scalar A [m²] (finding 6)
+    catchment_area_m2: torch.Tensor         # scalar A_catch [m²]
     incidence_angle_deg: torch.Tensor      # scalar [deg], mean over the series' acquisitions
 
 
@@ -160,6 +164,12 @@ class ARSDataset(Dataset):
             design_recharge_capacity=torch.tensor(
                 record.design.design_recharge_capacity_m3_per_day, dtype=torch.float32
             ),
+            recharge_area_m2=torch.tensor(
+                record.design.effective_recharge_area_m2, dtype=torch.float32
+            ),
+            catchment_area_m2=torch.tensor(
+                record.design.catchment_area_km2 * M2_PER_KM2, dtype=torch.float32
+            ),
             incidence_angle_deg=torch.tensor(
                 float(np.mean([o.incidence_angle_deg for o in sar_sorted])), dtype=torch.float32
             ),
@@ -240,6 +250,8 @@ class ARSCollateFn:
             "design_recharge_capacity": torch.stack(
                 [s.design_recharge_capacity for s in batch]
             ),
+            "recharge_area_m2": torch.stack([s.recharge_area_m2 for s in batch]),
+            "catchment_area_m2": torch.stack([s.catchment_area_m2 for s in batch]),
             "incidence_angle_deg": torch.stack([s.incidence_angle_deg for s in batch]),
             "adjacency": torch.from_numpy(adjacency),
         }

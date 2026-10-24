@@ -119,6 +119,8 @@ def loss_of(loss_fn: CompositeARSLoss, out, batch: dict):
         adjacency=batch["adjacency"],
         time_delta_days=batch["time_delta_days"],
         storativity=out.storativity,
+        recharge_area_m2=batch["recharge_area_m2"],
+        catchment_area_m2=batch["catchment_area_m2"],
         observation_mask=batch["coherence_mask"],
     )
 

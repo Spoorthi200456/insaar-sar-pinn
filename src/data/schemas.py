@@ -75,6 +75,14 @@ class ARSDesignParameters(StrictModel):
     catchment_area_km2: float = Field(..., gt=0.0)
     construction_date: Optional[datetime] = None
     design_recharge_capacity_m3_per_day: float = Field(..., gt=0.0)
+    recharge_area_m2: Optional[float] = Field(
+        default=None, gt=0.0,
+        description=(
+            "Area through which the structure recharges the aquifer (water-spread / "
+            "bed area) [m2]. If absent, approximated as storage_volume_m3 / height_m "
+            "(PROVISIONAL, docs/open_questions.md OQ9)."
+        ),
+    )
     biot_coefficient_alpha: float = Field(
         default=0.6, gt=0.0, le=1.0,
         description=(
@@ -89,6 +97,13 @@ class ARSDesignParameters(StrictModel):
     @classmethod
     def _tz_aware(cls, v: Optional[datetime]) -> Optional[datetime]:
         return _utc(v) if v is not None else None
+
+    @property
+    def effective_recharge_area_m2(self) -> float:
+        """A [m2]: `recharge_area_m2`, else the prismatic-basin estimate V / h (PROVISIONAL)."""
+        if self.recharge_area_m2 is not None:
+            return self.recharge_area_m2
+        return self.storage_volume_m3 / self.height_m
 
     @field_validator(
         "height_m", "storage_volume_m3", "catchment_area_km2",

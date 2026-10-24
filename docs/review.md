@@ -14,7 +14,7 @@ whether an ARS is recharging or failing?), not by file order.
 | 3 | `src/models/losses.py:123-125` | Storage term has no S_s and no ÷Δt | **Fixed** (integrator Δt still open) |
 | 4 | `src/data/dataset.py:214-228` | Physics graph built from minibatch composition | Open |
 | 5 | `src/models/layers.py:126-135` | GAT has no self-loop — isolated nodes get zero embedding | Open |
-| 6 | `src/models/losses.py:147-159` | Q compared against m³/day and against mm | Open |
+| 6 | `src/models/losses.py:147-159` | Q compared against m³/day and against mm | **Fixed** (review 2) |
 | 7 | `src/models/losses.py:147-159` | Regularizers not masked — padding adds phantom recharge | Open |
 | 8 | `src/models/losses.py:131-132` | PDE loss masked by coherence; residual hard-clamped | Open |
 | 9 | `src/data/preprocessing.py:91-113` | Rainfall binned by midpoint (non-causal) | **Fixed** |
@@ -174,7 +174,18 @@ author's approval in plan mode before any code changes.
   aquifer area × thickness for the capacity check, and convert rainfall to
   volume via catchment area × runoff/infiltration coefficient for the mass
   balance. Record all conversions in the units table.
-- **Status:** Open.
+- **Fix (review 2):** R kept in m/day (form (b), not 1/day). Capacity hinge
+  max(0, R·A/Q_design − 1)²; mass balance
+  max(0, (Σ R·A·Δt − V_in)/(V_in + 1 mm·A))² with
+  V_in = Σ P/1000·(A + c_r·A_catch). Both are dimensionless. New design field
+  `recharge_area_m2` (default V/h, provisional OQ9); c_r = 0.3 (OQ10).
+  Derivation: `docs/math/recharge_units.md`.
+- **Tests:** `tests/test_losses.py::TestRegularizerUnits` (4). Before: TypeError
+  (no area inputs). The same scenarios through the old loss: capacity penalty
+  **0.0** for 170 m³/day vs 100 m³/day, mass-balance penalty **0.0** for
+  1190 m³ out vs 151 m³ in per step. After: 4 passed (0.49 and ≈ 47).
+- **Status:** Fixed (loss). The API's `recharge_efficiency` still mixes
+  units; that is new finding 12, fixed separately.
 
 ## 7. Regularizers not masked
 

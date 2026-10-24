@@ -20,6 +20,15 @@ import torch.nn as nn
 
 _EPS = 1e-8
 
+# Fraction of rain on the catchment that runs off into the structure
+# (PROVISIONAL, docs/open_questions.md OQ10). Rational-method runoff
+# coefficients for Indian semi-arid catchments are typically 0.1-0.4.
+RUNOFF_COEFFICIENT = 0.3
+MM_PER_M = 1000.0
+# Volume floor for the mass-balance ratio: 1 mm of water over the recharge
+# area, so a dry series (no inflow) still gives a finite, dimensionless ratio.
+_MASS_BALANCE_FLOOR_M = 1e-3
+
 
 def _masked_mse(pred: torch.Tensor, target: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor:
     """Mean squared error over `mask == True` elements only; 0 if mask is empty."""
@@ -142,9 +151,12 @@ class CompositeARSLoss(nn.Module):
     residuals or hinge penalties), so `total` is always >= 0.
     """
 
-    def __init__(self, weights: LossWeights | None = None) -> None:
+    def __init__(
+        self, weights: LossWeights | None = None, runoff_coefficient: float = RUNOFF_COEFFICIENT
+    ) -> None:
         super().__init__()
         self.weights = weights or LossWeights()
+        self.runoff_coefficient = runoff_coefficient
 
     def forward(
         self,
@@ -154,10 +166,12 @@ class CompositeARSLoss(nn.Module):
         hydraulic_conductivity: torch.Tensor,        # (B,)    T_i [m²/day] (form (b))
         recharge_rate: torch.Tensor,                 # (B, T)  R_i(t) [m/day]
         design_recharge_capacity: torch.Tensor,      # (B,)    Q_i,design [m³/day]
-        rainfall_mm: torch.Tensor,                    # (B, T)  rainfall (mass-balance forcing)
+        rainfall_mm: torch.Tensor,                    # (B, T)  rain per InSAR interval [mm]
         adjacency: torch.Tensor,                      # (B, B)
         time_delta_days: torch.Tensor,                # (B, T)  Δt_k [day], 0 on padding
         storativity: torch.Tensor,                    # scalar  S [dimensionless]
+        recharge_area_m2: torch.Tensor,               # (B,)    A, structure recharge area [m²]
+        catchment_area_m2: torch.Tensor,              # (B,)    A_catch [m²]
         observation_mask: torch.Tensor | None = None,      # (B, T) bool, True == reliable
         boundary_head: torch.Tensor | None = None,          # (B, T) known head, if any
         boundary_mask: torch.Tensor | None = None,           # (B, T) bool, True where boundary_head is known
@@ -192,18 +206,28 @@ class CompositeARSLoss(nn.Module):
             boundary_loss = boundary_loss + ((predicted_head_change[:, 0] - initial_head) ** 2).mean()
 
         # --- Domain-specific regularizers -------------------------------- #
-        design_capacity_penalty = torch.clamp(
-            recharge_rate - design_recharge_capacity.unsqueeze(-1), min=0.0
-        ) ** 2
+        # Units (review finding 6, docs/math/recharge_units.md): R [m/day] is a
+        # flux per unit area. R·A [m³/day] is the structure's recharge volume
+        # rate, comparable with Q_design [m³/day]. Both hinges are ratios, so
+        # dimensionless.
+        area = recharge_area_m2.unsqueeze(-1)                      # (B, 1) m²
+        volume_rate = recharge_rate * area                         # (B, T) m³/day
+        capacity = design_recharge_capacity.unsqueeze(-1)          # (B, 1) m³/day
+        design_capacity_penalty = torch.clamp(volume_rate / capacity - 1.0, min=0.0) ** 2
         design_capacity_loss = design_capacity_penalty.mean()
 
         non_negativity_penalty = torch.clamp(-recharge_rate, min=0.0) ** 2
         non_negativity_loss = non_negativity_penalty.mean()
 
-        cumulative_recharge = recharge_rate.sum(dim=1)
-        cumulative_rainfall = rainfall_mm.sum(dim=1)
+        # Mass balance: recharge volume Σ R·A·Δt [m³] cannot exceed the rain
+        # volume that can reach the structure, Σ P/1000·(A + c_r·A_catch) [m³]
+        # (direct rain on the footprint + runoff from the catchment).
+        recharge_volume = (volume_rate * time_delta_days).sum(dim=1)            # (B,) m³
+        contributing_area = recharge_area_m2 + self.runoff_coefficient * catchment_area_m2
+        inflow_volume = (rainfall_mm / MM_PER_M).sum(dim=1) * contributing_area  # (B,) m³
+        volume_scale = inflow_volume + _MASS_BALANCE_FLOOR_M * recharge_area_m2
         mass_balance_loss = (
-            torch.clamp(cumulative_recharge - cumulative_rainfall, min=0.0) ** 2
+            torch.clamp((recharge_volume - inflow_volume) / volume_scale, min=0.0) ** 2
         ).mean()
 
         # Spatial smoothness of K via the same graph Laplacian, applied to

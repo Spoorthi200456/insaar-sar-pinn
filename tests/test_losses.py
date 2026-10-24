@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 import torch
 
 from src.models.losses import (
@@ -65,6 +66,8 @@ class TestCompositeARSLoss:
             time_delta_days=torch.full((b, t), 12.0),
             storativity=torch.tensor(0.02),
             observation_mask=torch.ones(b, t, dtype=torch.bool),
+            recharge_area_m2=torch.full((b,), 1000.0),
+            catchment_area_m2=torch.full((b,), 2.0e6),
         )
 
     def test_total_loss_is_non_negative_and_finite(self):
@@ -145,6 +148,8 @@ class TestPDEResidualPhysics:
             time_delta_days=dt,
             storativity=torch.tensor(self.S),
             observation_mask=torch.ones(b, t, dtype=torch.bool),
+            recharge_area_m2=torch.ones(b),
+            catchment_area_m2=torch.ones(b),
         )
 
     @staticmethod
@@ -200,3 +205,65 @@ class TestPDEResidualPhysics:
         padded = loss_fn(**batch_p)
         assert torch.isfinite(padded.pde)
         assert abs(padded.pde.item() - unpadded.pde.item()) < 1e-14
+
+
+class TestRegularizerUnits:
+    """
+    Review finding 6. R [m/day] is a flux per unit area; it must be converted to
+    a volume rate R*A [m3/day] (A = structure recharge area [m2]) before it is
+    compared with the design capacity Q_design [m3/day], and to a volume
+    sum_k R_k A dt_k [m3] before it is compared with the rain volume that can
+    reach the structure, sum_k P_k/1000 (A + c_r A_catch) [m3].
+    Derivation: docs/math/recharge_units.md.
+    """
+
+    A = 1000.0          # m2 water-spread area
+    A_CATCH = 0.5e6     # m2 (0.5 km2)
+
+    def _batch(self, r, p_mm, q_design, b=2, t=6, area=A, catch=A_CATCH):
+        return dict(
+            predicted_displacement_cm=torch.zeros(b, t),
+            observed_displacement_cm=torch.zeros(b, t),
+            predicted_head_change=torch.zeros(b, t),
+            hydraulic_conductivity=torch.ones(b),
+            recharge_rate=torch.full((b, t), r),
+            design_recharge_capacity=torch.full((b,), q_design),
+            rainfall_mm=torch.full((b, t), p_mm),
+            adjacency=torch.zeros(b, b),
+            time_delta_days=torch.full((b, t), 7.0),
+            storativity=torch.tensor(0.02),
+            observation_mask=torch.ones(b, t, dtype=torch.bool),
+            recharge_area_m2=torch.full((b,), area),
+            catchment_area_m2=torch.full((b,), catch),
+        )
+
+    def test_capacity_fires_when_volume_rate_exceeds_design(self):
+        # Demo value R = 0.17 m/day over 1000 m2 = 170 m3/day > Q_design = 100 m3/day.
+        # Old code compared 0.17 with 100 directly and never fired.
+        out = CompositeARSLoss(LossWeights())(**self._batch(0.17, 40.0, 100.0))
+        assert out.design_capacity.item() == pytest.approx((170.0 / 100.0 - 1.0) ** 2, rel=1e-5)
+
+    def test_mass_balance_fires_when_recharge_volume_exceeds_rain_volume(self):
+        # 1 mm per 7-day step on A + c_r*A_catch = 1000 + 0.3*5e5 = 151000 m2 -> 151 m3/step
+        # in; R = 0.17 m/day * 1000 m2 * 7 day = 1190 m3/step out -> impossible.
+        # Old code compared sum R = 1.02 with sum P = 6 (mm) and never fired.
+        out = CompositeARSLoss(LossWeights())(**self._batch(0.17, 1.0, 1e9))
+        assert out.mass_balance.item() > 1.0
+
+    def test_feasible_recharge_gives_zero_penalties(self):
+        # R*A = 10 m3/day <= 100; 70 m3/step out << 40 mm * 151000 m2 = 6040 m3/step in.
+        out = CompositeARSLoss(LossWeights())(**self._batch(0.01, 40.0, 100.0))
+        assert out.design_capacity.item() == 0.0
+        assert out.mass_balance.item() == 0.0
+
+    def test_penalties_are_dimensionally_consistent(self):
+        # Rescaling every area and the design capacity by the same factor is a
+        # change of units of area (e.g. m2 -> 10 m2 blocks); dimensionless
+        # penalties must not change.
+        loss_fn = CompositeARSLoss(LossWeights())
+        base = loss_fn(**self._batch(0.17, 1.0, 100.0))
+        c = 37.0
+        scaled = loss_fn(**self._batch(0.17, 1.0, 100.0 * c, area=self.A * c, catch=self.A_CATCH * c))
+        assert scaled.design_capacity.item() == pytest.approx(base.design_capacity.item(), rel=1e-5)
+        assert scaled.mass_balance.item() == pytest.approx(base.mass_balance.item(), rel=1e-5)
+        assert base.design_capacity.item() > 0 and base.mass_balance.item() > 0
