@@ -336,6 +336,7 @@ failed before the fix; see each commit message for the before/after output.
 | 30 | `src/models/layers.py::RechargeDecoder` | Decoders forget which structure they are decoding: R identical across structures | **Fixed** |
 | 31 | `src/models/losses.py` (design-capacity hinge) | Per-step capacity ceiling vs peak recharge above an average-based capacity | **Fixed** (author decision 2) |
 | 32 | `src/models/network.py` (global scalars) | S_k, S, L learn at the network's lr, too slow to cross their range | **Fixed** (author decision 1, after run 1) |
+| 33 | `src/backend/inference_engine.py::_build_batch_tensors` | Inference normalised design features on the request batch, not on training statistics | **Fixed** (review 3) |
 
 ## 11. Flow equation has no sink
 
@@ -526,6 +527,24 @@ failed before the fix; see each commit message for the before/after output.
   their usual lr. `train.py` and the demo use it. Run 1b stays the official
   pre-registered result. Tests: `tests/test_training.py` (3). Before: 3
   failed (no `build_optimizer` / `GLOBAL_SCALAR_LR`). After: 3 passed.
+
+## 33. Inference normalised design features on the request batch (review 3)
+
+- **Where:** `InferenceEngine._build_batch_tensors` built `ARSDataset(records)`,
+  which fits design-feature mean/std on the submitted structures.
+- **Failure scenario:** the same structure gets different inputs, and so
+  different K, R and ranking, depending on which other structures are submitted
+  with it. A single-structure request has std 0, so all its design features
+  become 0. None of these match the statistics the model was trained with.
+- **Fix:** the engine loads the training split's statistics saved in the
+  checkpoint by `train()` (finding 24) and always uses them. Without them (no
+  checkpoint, e.g. the untrained development model) it logs a warning and
+  falls back to the old behaviour.
+- **Tests:** `tests/test_inference_normalisation.py` (2). Before: 2 failed (a
+  structure's features differed alone vs in a group; they did not equal the
+  training statistics). After: 2 passed.
+- **Status:** Fixed. ONNX deployments need the torch checkpoint path set for
+  the statistics to be found.
 
 ## 21–28. Open findings (documented, not fixed)
 

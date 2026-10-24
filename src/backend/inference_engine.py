@@ -28,6 +28,7 @@ import numpy as np
 import torch
 
 from src.data.dataset import ARSDataset, make_collate_fn
+from src.data.preprocessing import NormalizationStats
 from src.data.schemas import ARSTelemetryRecord, GraphEdge, StructurePrediction
 from src.models.losses import pde_residual
 from src.models.network import ARSNet, latent_drift
@@ -69,6 +70,15 @@ def _well_rmse(head_pred: np.ndarray, well: np.ndarray, mask: np.ndarray) -> flo
     return float(np.sqrt(np.mean((err - err.mean()) ** 2)))
 
 
+def _stats_from_checkpoint(path: Path) -> dict[str, NormalizationStats] | None:
+    """Design-feature mean/std of the TRAINING split, saved by train() (finding 33)."""
+    checkpoint = torch.load(path, map_location="cpu", weights_only=False)
+    raw = checkpoint.get("design_stats")
+    if not raw:
+        return None
+    return {k: NormalizationStats(mean=v["mean"], std=v["std"]) for k, v in raw.items()}
+
+
 @contextmanager
 def mc_dropout_mode(model: torch.nn.Module):
     """
@@ -108,6 +118,10 @@ class InferenceEngine:
 
         self._session = None
         self._torch_model: ARSNet | None = None
+        # Training-split design-feature statistics (finding 33); None = unknown.
+        self._design_stats: dict[str, NormalizationStats] | None = None
+        if torch_checkpoint_path is not None and torch_checkpoint_path.exists():
+            self._design_stats = _stats_from_checkpoint(torch_checkpoint_path)
         # Serialises use of the shared eager model (review finding 14): the
         # MC-dropout pass flips it to train mode, and API requests run in
         # worker threads, so without this a concurrent request could make its
@@ -168,7 +182,17 @@ class InferenceEngine:
     def _build_batch_tensors(
         self, records: list[ARSTelemetryRecord], edges: list[GraphEdge]
     ) -> dict[str, torch.Tensor | list[str]]:
-        dataset = ARSDataset(records, sequence_length=self.sequence_length)
+        if self._design_stats is None:
+            logger.warning(
+                "No training normalisation statistics available: design features are "
+                "normalised on this request's structures, so results depend on what is "
+                "submitted together (review finding 33)."
+            )
+        dataset = ARSDataset(
+            records,
+            sequence_length=self.sequence_length,
+            design_feature_normalizers=self._design_stats,
+        )
         collate_fn = make_collate_fn(explicit_edges=edges)
         samples = [dataset[i] for i in range(len(dataset))]
         return collate_fn(samples)
