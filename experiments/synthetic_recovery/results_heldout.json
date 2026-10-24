@@ -1,0 +1,80 @@
+{
+  "protocol": "held-out-run4",
+  "config": {
+    "n_structures": 64,
+    "n_failing": 24,
+    "fractions": [
+      0.7,
+      0.15,
+      0.15
+    ],
+    "split_seed": 0
+  },
+  "thresholds": {
+    "spearman_A": 0.7,
+    "auroc_A": 0.85,
+    "median_rel_err_B": "max(0.30, 2 x oracle floor on test)"
+  },
+  "scenarios": {
+    "A_insar_only": {
+      "n_train": 44,
+      "n_validation": 10,
+      "n_test": 10,
+      "spearman": -0.0303030303030303,
+      "auroc": 0.5416666666666666,
+      "median_rel_err_working": 0.8875812468125905,
+      "oracle_floor_test": 0.043657902849393845,
+      "best_epoch": 169,
+      "S_fit": 0.01005904283374548,
+      "S_k_fit": 0.006918163970112801,
+      "L_fit": 0.0002230176905868575,
+      "test_data_rmse_cm": 0.46191740338793874,
+      "seconds": 148.6
+    },
+    "B_oracle_S_Sk": {
+      "n_train": 44,
+      "n_validation": 10,
+      "n_test": 10,
+      "spearman": -0.3696969696969697,
+      "auroc": 0.4166666666666667,
+      "median_rel_err_working": 0.4925124506468158,
+      "oracle_floor_test": 0.043657902849393845,
+      "best_epoch": 599,
+      "S_fit": 0.05000000074505806,
+      "S_k_fit": 0.0050000036135315895,
+      "L_fit": 0.0007170627941377461,
+      "test_data_rmse_cm": 0.45761613257219597,
+      "seconds": 142.2
+    },
+    "C_hard_rock": {
+      "n_train": 44,
+      "n_validation": 10,
+      "n_test": 10,
+      "spearman": -0.17575757575757575,
+      "auroc": 0.5,
+      "median_rel_err_working": 0.9720035719647181,
+      "oracle_floor_test": 10.914475712348366,
+      "best_epoch": 579,
+      "S_fit": 0.03191399574279785,
+      "S_k_fit": 1.9175060970155755e-06,
+      "L_fit": 0.0003419174172449857,
+      "test_data_rmse_cm": 0.2966332983716218,
+      "seconds": 146.2
+    },
+    "D_wells_train_only": {
+      "n_train": 44,
+      "n_validation": 10,
+      "n_test": 10,
+      "spearman": -0.32121212121212117,
+      "auroc": 0.4166666666666667,
+      "median_rel_err_working": 0.827063006099511,
+      "oracle_floor_test": 0.043657902849393845,
+      "best_epoch": 139,
+      "S_fit": 0.009121356531977654,
+      "S_k_fit": 0.00472739664837718,
+      "L_fit": 0.000228056640480645,
+      "test_data_rmse_cm": 0.44961261174187,
+      "seconds": 145.6
+    }
+  }
+}

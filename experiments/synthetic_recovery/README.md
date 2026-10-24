@@ -357,3 +357,46 @@ The test suite reflects exactly this:
 The pytest (`tests/test_synthetic_recovery.py::TestHeldOut*`) asserts exactly these. Any
 scenario that misses its threshold will be marked `xfail(strict=True)` with the result
 and reason, as for run 3. The thresholds will not be moved.
+
+### Run 4 — HELD-OUT structures (protocol `f916acd`, declared before running): **FAILS**
+
+Files: `results_heldout.csv` (per test structure), `results_heldout.json`. One run.
+
+| scenario | split (train/val/test) | Spearman ρ (test) | AUROC (test) | median rel. err. (test, working) | oracle floor (test) | best epoch | test InSAR RMSE | verdict |
+|---|---|---|---|---|---|---|---|---|
+| A, InSAR only | 44/10/10 | **−0.03** | **0.54** | 0.89 | 0.044 | 169 | 0.46 cm | **fails A** |
+| B, S and S_k known | 44/10/10 | −0.37 | 0.42 | **0.49** | 0.044 | 599 | 0.46 cm | **fails B** |
+| C, hard rock | 44/10/10 | −0.18 | 0.50 | 0.97 | 10.9 | 579 | 0.30 cm | (report) no information |
+| D, wells at training structures | 44/10/10 | −0.32 | 0.42 | 0.83 | 0.044 | 139 | 0.45 cm | (report) fails on unseen structures |
+
+(InSAR noise is 0.30 cm at good coherence.)
+
+**What this shows.** On structures it has never seen, the model's recharge estimates carry
+**no information**. Ranking and the working/failing split are at chance level in every
+scenario, including when the aquifer constants are given (B), and including when it was
+trained with wells (D). It does not even reproduce the unseen structures' InSAR
+displacement well (RMSE 0.46 cm against 0.30 cm noise).
+
+**So the in-sample results of runs 2 and 3 (ρ 0.95, AUROC 1.00) did not generalise.**
+There, the network was trained and scored on the same 16 structures. It fitted *those*
+structures, with enough capacity to fit each one, and did not learn a mapping from a
+structure's data to its recharge that carries over to new structures. The early best
+validation epoch in A (169 of 600) is the usual sign of overfitting.
+
+**Why (explanation, not tested further).** ARSNet is an *amortised* inverse model. A single
+network must turn any structure's InSAR, rainfall and design inputs directly into head and
+recharge, after seeing only 44 examples. With 44 training structures and a network of this
+size, it learns the training structures rather than the rule. Note that the physics and
+data terms of the loss need **no ground truth**: they use only the structure's own InSAR,
+rainfall and design data. A physics-informed model can therefore be **fitted to a new
+structure's own data at deployment** ("test-time" or per-structure inversion), instead of
+being applied as a fixed function. That is a change of method, not made here. It is the
+obvious next thing to try, and it would need its own pre-registered test.
+
+**Bottom line for the project:** under every protocol tried, there is no evidence yet that
+the model can assess a structure it was not trained on. Runs 2–3 show it can fit the
+structures it was trained on.
+
+The suite marks `test_heldout_ranks_unseen_structures_from_insar_alone` and
+`test_heldout_recovers_absolute_recharge_with_known_constants` as `xfail(strict=True)`
+with these numbers. The thresholds are unchanged.

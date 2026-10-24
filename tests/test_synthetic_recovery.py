@@ -171,6 +171,16 @@ class TestHeldOutSplit:
 
 
 @pytest.mark.slow
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "Run 4 (held-out, protocol f916acd): on 10 unseen test structures the model's ranking "
+        "is at chance - Spearman -0.03, AUROC 0.54 (needs >= 0.70 / >= 0.85); test InSAR RMSE "
+        "0.46 cm vs 0.30 cm noise. The in-sample ranking of runs 2-3 did not generalise "
+        "(amortised model, 44 training structures). See experiments/synthetic_recovery/"
+        "README.md, run 4. strict=True: if this starts passing, revisit the README."
+    ),
+)
 def test_heldout_ranks_unseen_structures_from_insar_alone(heldout_sim):
     from experiments.synthetic_recovery import heldout
 
@@ -181,6 +191,14 @@ def test_heldout_ranks_unseen_structures_from_insar_alone(heldout_sim):
 
 
 @pytest.mark.slow
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "Run 4 (held-out): with S and S_k fixed to truth, median relative error of mean "
+        "recharge on unseen working structures 0.49 > max(0.30, 2 x oracle 0.044); ranking "
+        "also at chance (Spearman -0.37). See experiments/synthetic_recovery/README.md, run 4."
+    ),
+)
 def test_heldout_recovers_absolute_recharge_with_known_constants(heldout_sim):
     from experiments.synthetic_recovery import heldout
 
