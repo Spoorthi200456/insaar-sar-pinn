@@ -50,6 +50,16 @@ class RawPrediction:
     predicted_displacement_cm: np.ndarray
 
 
+NOTE_INSAR_ONLY = (
+    "No well data: InSAR alone fixes recharge only up to an unknown regional factor, so this "
+    "is a relative ranking among the submitted structures, not a percentage."
+)
+NOTE_WELLS = (
+    "Well-calibrated estimate; the percentage still depends on the fitted storativity S, "
+    "which wells alone do not determine (provisional)."
+)
+
+
 def _well_rmse(head_pred: np.ndarray, well: np.ndarray, mask: np.ndarray) -> float | None:
     """RMS of predicted-minus-well head after removing the mean offset [m]; None if no wells."""
     if not mask.any():
@@ -238,6 +248,19 @@ class InferenceEngine:
         well_mask = batch["well_mask"].numpy()
         structure_ids = batch["structure_ids"]
 
+        # Relative ranking (author decision 5): score = mean(R*A)/Q_design per
+        # structure; any common factor (the unidentifiable S_k/S) cancels.
+        scores = []
+        for i in range(len(structure_ids)):
+            real = real_steps[i]
+            v = raw["recharge_rate"][i][real] * recharge_area[i]
+            cap = float(design_capacity[i]) if design_capacity[i] > 1e-6 else 1e-6
+            scores.append(float(np.mean(v)) / cap if v.size else 0.0)
+        order = np.argsort(-np.asarray(scores), kind="stable")
+        rank = np.empty(len(scores), dtype=int)
+        rank[order] = np.arange(1, len(scores) + 1)
+        n = len(scores)
+
         predictions: list[StructurePrediction] = []
         for i, structure_id in enumerate(structure_ids):
             # Review finding 12: R [m/day] is a flux; the structure's recharge
@@ -271,8 +294,18 @@ class InferenceEngine:
                     predicted_displacement_cm=[
                         float(v) for v in raw["predicted_displacement_cm"][i][real]
                     ],
-                    recharge_efficiency=efficiency,
-                    is_underperforming=efficiency < recharge_efficiency_threshold,
+                    recharge_efficiency=efficiency if has_wells[i] else None,
+                    is_underperforming=(
+                        efficiency < recharge_efficiency_threshold if has_wells[i] else None
+                    ),
+                    relative_recharge_rank=int(rank[i]),
+                    relative_recharge_percentile=(float((n - rank[i]) / (n - 1)) if n > 1 else 1.0),
+                    assessment_basis=(
+                        "well_calibrated_provisional"
+                        if has_wells[i]
+                        else "relative_ranking_insar_only"
+                    ),
+                    assessment_note=NOTE_WELLS if has_wells[i] else NOTE_INSAR_ONLY,
                     confidence_interval_m3_per_day=ci,
                     has_well_data=bool(has_wells[i]),
                     well_head_rmse_m=_well_rmse(

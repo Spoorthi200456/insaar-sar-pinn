@@ -81,8 +81,15 @@ export interface StructurePrediction {
   transmissivity_m2_per_day: number;
   predicted_recharge_series_m3_per_day: number[];
   predicted_displacement_cm: number[];
-  recharge_efficiency: number;
-  is_underperforming: boolean;
+  /** Only with well data (author decision 5); null for InSAR-only structures. */
+  recharge_efficiency: number | null;
+  is_underperforming: boolean | null;
+  /** 1 = highest recharge relative to design among the submitted structures. */
+  relative_recharge_rank: number;
+  /** 1 = highest, 0 = lowest. */
+  relative_recharge_percentile: number;
+  assessment_basis: "relative_ranking_insar_only" | "well_calibrated_provisional";
+  assessment_note: string;
   confidence_interval_m3_per_day: [number, number];
   /** False = InSAR only: absolute recharge is not identifiable. */
   has_well_data: boolean;

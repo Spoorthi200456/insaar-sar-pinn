@@ -17,8 +17,11 @@ interface PointDatum {
   structure_id: string;
   longitude: number;
   latitude: number;
-  efficiency: number;
-  underperforming: boolean;
+  efficiency: number | null;
+  underperforming: boolean | null;
+  rank: number | null;
+  percentile: number | null;
+  note: string;
   hasPrediction: boolean;
 }
 
@@ -31,6 +34,10 @@ const DEFAULT_STYLE_URL =
 
 function colorForPoint(point: PointDatum): [number, number, number, number] {
   if (!point.hasPrediction) return [100, 116, 139, 160]; // slate-500, no prediction yet
+  if (point.efficiency === null) {
+    // InSAR only (author decision 5): relative ranking, no percentage.
+    return (point.percentile ?? 1) < 1 / 3 ? [168, 85, 247, 210] : [96, 165, 250, 210];
+  }
   if (point.underperforming) return [239, 68, 68, 210]; // danger-500
   if (point.efficiency < 0.6) return [245, 158, 11, 210]; // warn-500
   return [45, 212, 191, 210]; // accent-500
@@ -54,8 +61,11 @@ export default function MapView({
           structure_id: r.design.structure_id,
           longitude: r.design.longitude,
           latitude: r.design.latitude,
-          efficiency: pred?.recharge_efficiency ?? 0,
-          underperforming: pred?.is_underperforming ?? false,
+          efficiency: pred?.recharge_efficiency ?? null,
+          underperforming: pred?.is_underperforming ?? null,
+          rank: pred?.relative_recharge_rank ?? null,
+          percentile: pred?.relative_recharge_percentile ?? null,
+          note: pred?.assessment_note ?? "",
           hasPrediction: pred !== undefined,
         };
       }),
@@ -120,17 +130,28 @@ export default function MapView({
           style={{ left: hoverInfo.x + 12, top: hoverInfo.y + 12 }}
         >
           <div className="font-semibold text-slate-100">{hoverInfo.point.structure_id}</div>
-          {hoverInfo.point.hasPrediction ? (
+          {hoverInfo.point.hasPrediction && hoverInfo.point.efficiency === null ? (
+            <>
+              <div className="text-slate-400">
+                Relative recharge rank:{" "}
+                <span className="font-mono text-slate-200">
+                  {hoverInfo.point.rank} of {predictions.size}
+                </span>
+              </div>
+              <div className="max-w-[16rem] text-slate-500">{hoverInfo.point.note}</div>
+            </>
+          ) : hoverInfo.point.hasPrediction ? (
             <>
               <div className="text-slate-400">
                 Efficiency:{" "}
                 <span className="font-mono text-slate-200">
-                  {(hoverInfo.point.efficiency * 100).toFixed(1)}%
+                  {((hoverInfo.point.efficiency ?? 0) * 100).toFixed(1)}%
                 </span>
               </div>
               <div className={hoverInfo.point.underperforming ? "text-danger-400" : "text-accent-400"}>
                 {hoverInfo.point.underperforming ? "Underperforming" : "Nominal"}
               </div>
+              <div className="max-w-[16rem] text-slate-500">{hoverInfo.point.note}</div>
             </>
           ) : (
             <div className="text-slate-500">No prediction yet</div>
@@ -142,6 +163,8 @@ export default function MapView({
         <LegendDot color="bg-accent-500" label="Nominal" />
         <LegendDot color="bg-warn-500" label="Reduced efficiency" />
         <LegendDot color="bg-danger-500" label="Underperforming" />
+        <LegendDot color="bg-blue-400" label="No wells: upper 2/3 (relative)" />
+        <LegendDot color="bg-purple-500" label="No wells: lowest 1/3 (relative)" />
         <LegendDot color="bg-slate-500" label="No prediction" />
       </div>
     </div>

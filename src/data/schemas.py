@@ -19,7 +19,7 @@ from __future__ import annotations
 import math
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import (
@@ -323,14 +323,31 @@ class StructurePrediction(StrictModel):
     predicted_displacement_cm: list[float] = Field(
         ..., description="Predicted LOS displacement [cm], one value per real acquisition."
     )
-    recharge_efficiency: float = Field(
+    recharge_efficiency: float | None = Field(
         ...,
         description=(
             "mean over real acquisitions of R*A [m3/day] / Q_design [m3/day] "
-            "(dimensionless), clamped to [0, 5] for reporting."
+            "(dimensionless), clamped to [0, 5]. Only reported WITH well data (author "
+            "decision 5): from InSAR alone absolute recharge is not identifiable, so it "
+            "is null. Even with wells it depends on the fitted storativity S (provisional)."
         ),
     )
-    is_underperforming: bool
+    is_underperforming: bool | None = Field(
+        ..., description="recharge_efficiency < threshold; null when there is no efficiency."
+    )
+    relative_recharge_rank: int = Field(
+        ...,
+        ge=1,
+        description=(
+            "1 = highest recharge relative to design capacity among the structures submitted "
+            "together (score mean(R*A)/Q_design). Scale-free, so valid from InSAR alone."
+        ),
+    )
+    relative_recharge_percentile: float = Field(
+        ..., ge=0.0, le=1.0, description="(n - rank) / (n - 1); 1 = highest, 0 = lowest."
+    )
+    assessment_basis: Literal["relative_ranking_insar_only", "well_calibrated_provisional"]
+    assessment_note: str = Field(..., description="One-line explanation of the basis.")
     confidence_interval_m3_per_day: tuple[float, float]
     has_well_data: bool = Field(
         ...,

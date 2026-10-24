@@ -131,12 +131,21 @@ export default function Dashboard() {
 
   const summary = useMemo(() => {
     const values = Array.from(predictions.values());
-    const underperforming = values.filter((p) => p.is_underperforming).length;
+    // Percentages exist only for structures with well data (author decision 5).
+    const calibrated = values.filter((p) => p.recharge_efficiency !== null);
+    const underperforming = calibrated.filter((p) => p.is_underperforming === true).length;
     const meanEfficiency =
-      values.length > 0
-        ? values.reduce((sum, p) => sum + p.recharge_efficiency, 0) / values.length
-        : 0;
-    return { total: batch.records.length, scored: values.length, underperforming, meanEfficiency };
+      calibrated.length > 0
+        ? calibrated.reduce((sum, p) => sum + (p.recharge_efficiency ?? 0), 0) / calibrated.length
+        : null;
+    const insarOnly = values.length - calibrated.length;
+    return {
+      total: batch.records.length,
+      scored: values.length,
+      underperforming,
+      meanEfficiency,
+      insarOnly,
+    };
   }, [batch, predictions]);
 
   return (
@@ -154,11 +163,18 @@ export default function Dashboard() {
           <SummaryStat label="Structures" value={summary.total.toString()} />
           <SummaryStat label="Scored" value={summary.scored.toString()} />
           <SummaryStat
-            label="Underperforming"
+            label="Underperforming (wells)"
             value={summary.underperforming.toString()}
             tone={summary.underperforming > 0 ? "danger" : "accent"}
           />
-          <SummaryStat label="Mean efficiency" value={`${(summary.meanEfficiency * 100).toFixed(1)}%`} />
+          <SummaryStat
+            label="Mean efficiency (wells)"
+            value={
+              summary.meanEfficiency === null
+                ? "n/a"
+                : `${(summary.meanEfficiency * 100).toFixed(1)}%`
+            }
+          />
           <HealthBadge health={health} />
         </div>
       </header>
@@ -166,6 +182,12 @@ export default function Dashboard() {
       <div className="border-b border-warn-500/30 bg-warn-500/10 px-5 py-1.5 text-xs text-warn-400">
         SYNTHETIC DATA, PROVISIONAL PHYSICS. These outputs are a demonstration of the
         pipeline, not an assessment of any real recharge structure (see docs/STATUS.md).
+        {summary.insarOnly > 0 && (
+          <span className="block">
+            {summary.insarOnly} structure(s) have no well data: shown as a relative recharge
+            ranking, because InSAR alone cannot give an efficiency percentage.
+          </span>
+        )}
       </div>
 
       {errorMessage && (
