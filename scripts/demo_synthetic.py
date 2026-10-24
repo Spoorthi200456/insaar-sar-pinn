@@ -116,7 +116,7 @@ def loss_of(loss_fn: CompositeARSLoss, out, batch: dict):
         recharge_rate=out.recharge_rate,
         design_recharge_capacity=batch["design_recharge_capacity"],
         rainfall_mm=batch["rainfall_mm"],
-        adjacency=batch["adjacency"],
+        adjacency=batch["physics_adjacency"],
         time_delta_days=batch["time_delta_days"],
         storativity=out.storativity,
         recharge_area_m2=batch["recharge_area_m2"],
@@ -172,7 +172,7 @@ def main() -> None:
     records = make_synthetic_records(n_structures=N_STRUCTURES, n_timesteps=N_TIMESTEPS, seed=SEED)
     batch = full_batch(records)
 
-    adjacency = batch["adjacency"]
+    adjacency = batch["physics_adjacency"]
     n_edges = int(torch.triu(adjacency > 0, diagonal=1).sum().item())
     n_pairs = N_STRUCTURES * (N_STRUCTURES - 1) // 2
 

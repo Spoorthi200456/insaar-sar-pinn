@@ -176,8 +176,18 @@ class CompositeARSLoss(nn.Module):
         boundary_head: torch.Tensor | None = None,          # (B, T) known head, if any
         boundary_mask: torch.Tensor | None = None,           # (B, T) bool, True where boundary_head is known
         initial_head: torch.Tensor | None = None,             # (B,)  h_i(0) if known
+        node_mask: torch.Tensor | None = None,  # (B,) bool, True == seed node (finding 4)
     ) -> LossBreakdown:
         w = self.weights
+        b, t = predicted_displacement_cm.shape
+        # Only seed nodes contribute (finding 4): neighbour-only nodes are in the
+        # batch to give seeds exact neighbourhoods; their own are truncated.
+        if node_mask is None:
+            node_mask = torch.ones(b, dtype=torch.bool, device=predicted_displacement_cm.device)
+        node_rows = node_mask.unsqueeze(-1).expand(b, t)
+        data_mask = node_rows if observation_mask is None else observation_mask & node_rows
+        node_f = node_mask.float()
+        n_nodes = node_f.sum().clamp_min(1.0)
 
         # --- PDE residual loss ---------------------------------------- #
         # r = S ∂h/∂t − ∇·(T∇h) − R  [m/day]; see `pde_residual`.
@@ -190,20 +200,21 @@ class CompositeARSLoss(nn.Module):
             adjacency,
         )
         residual = torch.clamp(residual, min=-1e4, max=1e4)  # gradient-explosion guard
-        pde_mask = pde_valid if observation_mask is None else pde_valid & observation_mask
+        pde_mask = pde_valid & data_mask
         pde_loss = _masked_mse(residual, torch.zeros_like(residual), pde_mask)
 
         # --- Data misfit loss ------------------------------------------ #
-        data_loss = _masked_mse(predicted_displacement_cm, observed_displacement_cm, observation_mask)
+        data_loss = _masked_mse(predicted_displacement_cm, observed_displacement_cm, data_mask)
 
         # --- Boundary / initial condition loss -------------------------- #
         boundary_loss = torch.zeros((), device=predicted_displacement_cm.device)
         if boundary_head is not None and boundary_mask is not None:
             boundary_loss = boundary_loss + _masked_mse(
-                predicted_head_change, boundary_head, boundary_mask
+                predicted_head_change, boundary_head, boundary_mask & node_rows
             )
         if initial_head is not None:
-            boundary_loss = boundary_loss + ((predicted_head_change[:, 0] - initial_head) ** 2).mean()
+            init_sq = (predicted_head_change[:, 0] - initial_head) ** 2
+            boundary_loss = boundary_loss + (init_sq * node_f).sum() / n_nodes
 
         # --- Domain-specific regularizers -------------------------------- #
         # Units (review finding 6, docs/math/recharge_units.md): R [m/day] is a
@@ -214,10 +225,10 @@ class CompositeARSLoss(nn.Module):
         volume_rate = recharge_rate * area                         # (B, T) m³/day
         capacity = design_recharge_capacity.unsqueeze(-1)          # (B, 1) m³/day
         design_capacity_penalty = torch.clamp(volume_rate / capacity - 1.0, min=0.0) ** 2
-        design_capacity_loss = design_capacity_penalty.mean()
+        design_capacity_loss = (design_capacity_penalty.mean(dim=1) * node_f).sum() / n_nodes
 
         non_negativity_penalty = torch.clamp(-recharge_rate, min=0.0) ** 2
-        non_negativity_loss = non_negativity_penalty.mean()
+        non_negativity_loss = (non_negativity_penalty.mean(dim=1) * node_f).sum() / n_nodes
 
         # Mass balance: recharge volume Σ R·A·Δt [m³] cannot exceed the rain
         # volume that can reach the structure, Σ P/1000·(A + c_r·A_catch) [m³]
@@ -226,14 +237,16 @@ class CompositeARSLoss(nn.Module):
         contributing_area = recharge_area_m2 + self.runoff_coefficient * catchment_area_m2
         inflow_volume = (rainfall_mm / MM_PER_M).sum(dim=1) * contributing_area  # (B,) m³
         volume_scale = inflow_volume + _MASS_BALANCE_FLOOR_M * recharge_area_m2
-        mass_balance_loss = (
+        mass_balance_per_node = (
             torch.clamp((recharge_volume - inflow_volume) / volume_scale, min=0.0) ** 2
-        ).mean()
+        )
+        mass_balance_loss = (mass_balance_per_node * node_f).sum() / n_nodes
 
         # Spatial smoothness of K via the same graph Laplacian, applied to
         # the (per-node, time-invariant) conductivity field.
         k_diff = hydraulic_conductivity.unsqueeze(0) - hydraulic_conductivity.unsqueeze(1)  # (B,B)
-        smoothness_loss = (adjacency * k_diff ** 2).sum() / adjacency.sum().clamp_min(_EPS)
+        seed_adj = adjacency * node_f.unsqueeze(-1)  # edges out of seed nodes only
+        smoothness_loss = (seed_adj * k_diff ** 2).sum() / seed_adj.sum().clamp_min(_EPS)
 
         total = (
             w.pde * pde_loss

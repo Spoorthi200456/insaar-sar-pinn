@@ -14,6 +14,7 @@ import numpy as np
 COHERENCE_THRESHOLD = 0.7
 MAX_ABS_DISPLACEMENT_CM = 10.0
 MAX_RAINFALL_MM = 1000.0
+EARTH_RADIUS_M = 6_371_000.0
 
 
 @dataclass(frozen=True)
@@ -144,3 +145,14 @@ def build_adjacency_matrix(
     # Symmetrize (undirected hydraulic connectivity).
     adjacency = np.maximum(adjacency, adjacency.T)
     return adjacency
+
+
+def pairwise_distance_m(coordinates_deg: np.ndarray) -> np.ndarray:
+    """(N, 2) lat/lon in degrees -> (N, N) great-circle (haversine) distances [m]."""
+    lat = np.radians(coordinates_deg[:, 0])[:, None]
+    lon = np.radians(coordinates_deg[:, 1])[:, None]
+    a = (
+        np.sin((lat - lat.T) / 2) ** 2
+        + np.cos(lat) * np.cos(lat.T) * np.sin((lon - lon.T) / 2) ** 2
+    )
+    return 2 * EARTH_RADIUS_M * np.arcsin(np.clip(np.sqrt(a), 0.0, 1.0))

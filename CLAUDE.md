@@ -63,7 +63,9 @@ textbook result each step relies on. Never skip steps.
 | transmissivity (model output `hydraulic_conductivity`, interpreted as T in form (b)) | T = K·b | m²/day (provisional) | network.py |
 | storativity (`ARSNet.storativity_logit` → sigmoid) | S | dimensionless, in (0, 1), init 0.02 (provisional) | network.py |
 | head (model output `predicted_head_change`) | h | m — declared, not enforced (integrator has no units and ignores Δt, review finding 3 note) | network.py |
-| graph weight | a_ij | MUST be 1/m² for ∇·(T∇h) to be m/day; currently dimensionless exp(−d/r) — OPEN, review finding 4 | preprocessing.py |
+| physics graph weight (`physics_adjacency`) | a_ij = c_ij / d_ij² | 1/m² (finding 4, docs/math/graph_stencil.md; connectivity provisional, OQ11) | graph.py |
+| attention prior (`adjacency`, GAT only — not physics) | — | dimensionless, 0..1 | graph.py |
+| structure spacing | d_ij | m (haversine) | preprocessing.py |
 | time step | Δt | days (0 on padded steps) | dataset.py |
 
 ## Hard rules
@@ -73,6 +75,8 @@ textbook result each step relies on. Never skip steps.
    not, stop and flag it instead of "fixing" it with a scale factor.
 3. Physics must not depend on minibatch composition (graph neighbours must come
    from a fixed structure network, not from whichever samples share a batch).
+   Implemented: `src/data/graph.py::StructureGraph` + `GraphBatchSampler`
+   (seeds + 3-hop closure, loss on seeds only).
 4. Don't touch `docs/INVENTION_LOG.md` — it is written by the human author only.
 5. Run `pytest -q` after any change in `src/`. Don't weaken or delete tests to make them pass.
 6. Never read or print `.env` / `.env.local` contents.

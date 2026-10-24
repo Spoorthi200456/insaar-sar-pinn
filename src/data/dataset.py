@@ -9,8 +9,9 @@ the practical form of "asynchronous temporal alignment" for a map-style
 dataset: alignment work for structure i does not block alignment work for
 structure j, and results are prefetched ahead of the training step.
 
-The custom `collate_fn` then builds the *batch-level* hydraulic-connectivity
-graph (adjacency matrix) required by the GAT layers in `src/models/layers.py`.
+Batches are cut out of ONE fixed structure graph (`src/data/graph.py`,
+review finding 4): seed structures plus their neighbourhood, with only seeds
+contributing to the loss, so physics never depends on batch composition.
 """
 
 from __future__ import annotations
@@ -19,13 +20,13 @@ from dataclasses import dataclass
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, Sampler
 
+from src.data.graph import DEFAULT_CONNECTIVITY_RADIUS_KM, StructureGraph
 from src.data.preprocessing import (
     COHERENCE_THRESHOLD,
     NormalizationStats,
     aggregate_rainfall_to_insar_cadence,
-    build_adjacency_matrix,
     clamp_displacement,
     clamp_rainfall,
     compute_normalization_stats,
@@ -38,6 +39,8 @@ from src.data.schemas import ARSTelemetryRecord, DataQualityFlag, GraphEdge
 # +/-10 cm bound by the schema, or explicitly missing) must never be used as
 # a data-misfit target.
 M2_PER_KM2 = 1.0e6
+# ARSNet default gat_num_layers (2) + 1: see GraphBatchSampler.
+DEFAULT_NEIGHBOUR_HOPS = 3
 
 _UNRELIABLE_FLAGS = (DataQualityFlag.OUT_OF_BOUNDS_CLAMPED, DataQualityFlag.MISSING)
 
@@ -199,83 +202,126 @@ class ARSDataset(Dataset):
 
 class ARSCollateFn:
     """
-    Batches `ARSSample`s into stacked tensors and builds the (B, B)
-    hydraulic-connectivity adjacency matrix `a_ij` used by the GAT layers.
+    Batches `ARSSample`s into stacked tensors and cuts the batch's adjacency
+    matrices out of ONE fixed `StructureGraph` (review finding 4).
 
-    This is a plain class (not a closure returned by a function) on purpose:
-    `DataLoader(num_workers > 0)` has to send `collate_fn` to each worker
-    process. On Windows -- which has no `fork()` and always uses `spawn` --
-    and on Python 3.14+ even on Linux/macOS (which switched the default
-    start method to `forkserver`), that means `collate_fn` is *pickled* and
-    sent over, not just referenced. A nested function (a closure) can't be
-    pickled at all (`Can't pickle local object ...`), so `num_workers > 0`
-    used to crash on exactly those platforms. A class instance defined at
-    module scope, holding only plain-picklable attributes (a dict/float
-    here), pickles fine everywhere, so this works identically on Linux
-    `fork`, Windows `spawn`, and Python 3.14's `forkserver`.
+    * `graph` given (training): the sub-matrices are indexed from it, so a
+      structure's neighbours never depend on batch composition. Items may be
+      `(sample, is_seed)` pairs from `GraphBatchSampler`; only seeds get
+      `loss_node_mask = True`.
+    * `graph` is None (inference / full-batch demo): the batch is taken to BE
+      the whole network, and the graph is built from it. Only valid when every
+      structure of the network is in the batch.
+
+    Batch keys: `adjacency` = dimensionless attention prior (GAT input),
+    `physics_adjacency` = a_ij [1/m²] (∇·(T∇h) in the loss).
+
+    A plain module-level class (not a closure) so `DataLoader(num_workers > 0)`
+    can pickle it under `spawn` (Windows) and `forkserver` (Python 3.14+).
     """
 
     def __init__(
         self,
-        edge_lookup: dict[tuple[str, str], float] | None = None,
-        connectivity_radius_km: float = 5.0,
+        graph: StructureGraph | None = None,
+        edges: list[tuple[str, str, float]] | None = None,
+        connectivity_radius_km: float = DEFAULT_CONNECTIVITY_RADIUS_KM,
     ) -> None:
-        self.edge_lookup = edge_lookup or {}
+        self.graph = graph
+        self.edges = edges or []
         self.connectivity_radius_km = connectivity_radius_km
 
-    def __call__(self, batch: list[ARSSample]) -> dict[str, torch.Tensor | list[str]]:
-        structure_ids = [s.structure_id for s in batch]
-        coords = torch.stack([s.coordinates for s in batch]).numpy()
-
-        if self.edge_lookup:
-            n = len(batch)
-            adjacency = np.zeros((n, n), dtype=np.float32)
-            for i, sid_i in enumerate(structure_ids):
-                for j, sid_j in enumerate(structure_ids):
-                    if i != j:
-                        adjacency[i, j] = self.edge_lookup.get((sid_i, sid_j), 0.0)
+    def __call__(self, batch: list) -> dict[str, torch.Tensor | list[str]]:
+        if batch and isinstance(batch[0], tuple):
+            samples = [b[0] for b in batch]
+            seeds = [bool(b[1]) for b in batch]
         else:
-            adjacency = build_adjacency_matrix(coords, self.connectivity_radius_km).astype(
-                np.float32
+            samples, seeds = list(batch), [True] * len(batch)
+        structure_ids = [s.structure_id for s in samples]
+
+        graph = self.graph
+        if graph is None:
+            coords = torch.stack([s.coordinates for s in samples]).double().numpy()
+            graph = StructureGraph.from_coordinates(
+                structure_ids, coords, self.edges, self.connectivity_radius_km
             )
+        physics, attention = graph.submatrices(structure_ids)
 
         return {
             "structure_ids": structure_ids,
-            "displacement_cm": torch.stack([s.displacement_cm for s in batch]),
-            "rainfall_mm": torch.stack([s.rainfall_mm for s in batch]),
-            "time_delta_days": torch.stack([s.time_delta_days for s in batch]),
-            "coherence_mask": torch.stack([s.coherence_mask for s in batch]),
-            "design_features": torch.stack([s.design_features for s in batch]),
-            "coordinates": torch.stack([s.coordinates for s in batch]),
+            "displacement_cm": torch.stack([s.displacement_cm for s in samples]),
+            "rainfall_mm": torch.stack([s.rainfall_mm for s in samples]),
+            "time_delta_days": torch.stack([s.time_delta_days for s in samples]),
+            "coherence_mask": torch.stack([s.coherence_mask for s in samples]),
+            "design_features": torch.stack([s.design_features for s in samples]),
+            "coordinates": torch.stack([s.coordinates for s in samples]),
             "design_recharge_capacity": torch.stack(
-                [s.design_recharge_capacity for s in batch]
+                [s.design_recharge_capacity for s in samples]
             ),
-            "recharge_area_m2": torch.stack([s.recharge_area_m2 for s in batch]),
-            "catchment_area_m2": torch.stack([s.catchment_area_m2 for s in batch]),
-            "incidence_angle_deg": torch.stack([s.incidence_angle_deg for s in batch]),
-            "adjacency": torch.from_numpy(adjacency),
+            "recharge_area_m2": torch.stack([s.recharge_area_m2 for s in samples]),
+            "catchment_area_m2": torch.stack([s.catchment_area_m2 for s in samples]),
+            "incidence_angle_deg": torch.stack([s.incidence_angle_deg for s in samples]),
+            "adjacency": torch.from_numpy(attention.astype(np.float32)),
+            "physics_adjacency": torch.from_numpy(physics.astype(np.float32)),
+            "loss_node_mask": torch.tensor(seeds, dtype=torch.bool),
         }
 
 
 def make_collate_fn(
-    explicit_edges: list[GraphEdge] | None = None, connectivity_radius_km: float = 5.0
+    explicit_edges: list[GraphEdge] | None = None,
+    connectivity_radius_km: float = DEFAULT_CONNECTIVITY_RADIUS_KM,
+    graph: StructureGraph | None = None,
 ) -> ARSCollateFn:
     """
-    Returns a picklable `collate_fn` callable (see `ARSCollateFn`) that
-    batches `ARSSample`s into stacked tensors and additionally builds the
-    (B, B) hydraulic-connectivity adjacency matrix `a_ij` used by the GAT
-    layers.
-
-    If `explicit_edges` (structure_id -> structure_id, weight) is supplied
-    (e.g. from a hydrogeological survey), those weights are used; otherwise
-    a geographic-proximity fallback graph is built from coordinates.
+    Returns a picklable collate callable (see `ARSCollateFn`). Pass `graph`
+    (the fixed network) whenever the batch is a subset of the network. Without
+    it, the batch itself is treated as the whole network: `explicit_edges`
+    (e.g. from a hydrogeological survey) if given, else the radius fallback.
     """
-    edge_lookup: dict[tuple[str, str], float] = {}
-    if explicit_edges:
-        for e in explicit_edges:
-            edge_lookup[(e.source_id, e.target_id)] = e.weight
-            edge_lookup[(e.target_id, e.source_id)] = e.weight
-    return ARSCollateFn(edge_lookup=edge_lookup, connectivity_radius_km=connectivity_radius_km)
+    edges = [(e.source_id, e.target_id, e.weight) for e in (explicit_edges or [])]
+    return ARSCollateFn(graph=graph, edges=edges, connectivity_radius_km=connectivity_radius_km)
+
+
+class _SeededDataset(Dataset):
+    """Wraps `ARSDataset` so `GraphBatchSampler` can tag items as seed / neighbour."""
+
+    def __init__(self, base: ARSDataset) -> None:
+        self.base = base
+
+    def __len__(self) -> int:
+        return len(self.base)
+
+    def __getitem__(self, key: tuple[int, bool]) -> tuple[ARSSample, bool]:
+        idx, is_seed = key
+        return self.base[idx], is_seed
+
+
+class GraphBatchSampler(Sampler):
+    """
+    Yields batches of `(index, is_seed)`: `batch_size` seed structures (each
+    structure is a seed exactly once per epoch) plus every structure within
+    `hops` edges of a seed on the fixed graph. With `hops` = number of GAT
+    layers + 1, a seed's embedding, its K and R, and the neighbour heads in its
+    ∇·(T∇h) are exactly those of a full-network forward pass.
+    """
+
+    def __init__(self, graph: StructureGraph, batch_size: int, shuffle: bool, hops: int) -> None:
+        self.graph = graph
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.hops = hops
+
+    def __len__(self) -> int:
+        n = len(self.graph.structure_ids)
+        return (n + self.batch_size - 1) // self.batch_size
+
+    def __iter__(self):
+        n = len(self.graph.structure_ids)
+        order = torch.randperm(n).tolist() if self.shuffle else list(range(n))
+        for start in range(0, n, self.batch_size):
+            seeds = order[start : start + self.batch_size]
+            nodes = self.graph.neighbour_closure(seeds, self.hops)
+            seed_set = set(seeds)
+            yield [(i, i in seed_set) for i in nodes]
 
 
 def build_dataloader(
@@ -285,16 +331,21 @@ def build_dataloader(
     shuffle: bool = True,
     num_workers: int = 4,
     edges: list[GraphEdge] | None = None,
+    connectivity_radius_km: float = DEFAULT_CONNECTIVITY_RADIUS_KM,
+    neighbour_hops: int = DEFAULT_NEIGHBOUR_HOPS,
 ) -> DataLoader:
+    """
+    Minibatches cut from ONE fixed graph over all `records` (review finding 4).
+    `neighbour_hops` must be >= (ARSNet GAT layers + 1); the default matches
+    ARSNet's default of 2 GAT layers.
+    """
     dataset = ARSDataset(records, sequence_length=sequence_length)
-    collate_fn = make_collate_fn(explicit_edges=edges)
+    graph = StructureGraph.from_records(records, edges, connectivity_radius_km)
     return DataLoader(
-        dataset,
-        batch_size=batch_size,
-        shuffle=shuffle,
+        _SeededDataset(dataset),
+        batch_sampler=GraphBatchSampler(graph, batch_size, shuffle, neighbour_hops),
         num_workers=num_workers,
-        collate_fn=collate_fn,
+        collate_fn=ARSCollateFn(graph=graph),
         persistent_workers=num_workers > 0,
         pin_memory=torch.cuda.is_available(),
-        drop_last=False,
     )

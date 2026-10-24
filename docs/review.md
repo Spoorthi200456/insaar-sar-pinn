@@ -12,7 +12,7 @@ whether an ARS is recharging or failing?), not by file order.
 | 1 | `src/models/losses.py:130` | PDE residual has wrong sign — recharge acts as a sink | **Fixed** |
 | 2 | `src/models/network.py:182` | Deformation coupling: wrong sign, wrong coefficient, no LOS projection | **Fixed** (review 2) |
 | 3 | `src/models/losses.py:123-125` | Storage term has no S_s and no ÷Δt | **Fixed** (integrator Δt still open) |
-| 4 | `src/data/dataset.py:214-228` | Physics graph built from minibatch composition | Open |
+| 4 | `src/data/dataset.py:214-228` | Physics graph built from minibatch composition | **Fixed** (review 2) |
 | 5 | `src/models/layers.py:126-135` | GAT has no self-loop — isolated nodes get zero embedding | Open |
 | 6 | `src/models/losses.py:147-159` | Q compared against m³/day and against mm | **Fixed** (review 2) |
 | 7 | `src/models/losses.py:147-159` | Regularizers not masked — padding adds phantom recharge | Open |
@@ -144,7 +144,21 @@ author's approval in plan mode before any code changes.
   m³/day. Not rescaled (hard rule 2); redefine a_ij as part of this finding.
   With the 5 km radius and ~50 km spacing of the synthetic set, a_ij = 0
   everywhere, so the term is currently 0.
-- **Status:** Open.
+- **Fix (review 2):** `src/data/graph.py::StructureGraph` is built once from all
+  records. It has two separate matrices: physics a_ij = c_ij/d_ij² [1/m²] (FV
+  stencil, regular-grid limit) and the dimensionless GAT attention prior.
+  `GraphBatchSampler` yields seeds plus their 3-hop closure; the loss takes
+  `node_mask` (seeds only). Training, the demo and inference all cut their
+  matrices from one graph. At inference, the submitted batch is the network.
+  Derivation: `docs/math/graph_stencil.md`.
+- **Tests:** `tests/test_graph.py` (6). On the pre-fix code, K of ARS-0000 was
+  **1.10846** with batch_size = 1 vs **1.10830** with the full batch (shuffle
+  changes physics), and a_01 = **0.670** (dimensionless) where 1/d² = 2.5e-7 /m².
+  The other tests error (no `physics_adjacency`, `node_mask`, graph module).
+  After: 6 passed. K and residual are identical for batch sizes 1/3/5/7, any
+  shuffle; divergence for a 1 m head drop over 2 km at T = 100 m²/day is
+  −2.5e-5 m/day as computed by hand.
+- **Status:** Fixed.
 
 ## 5. GAT has no self-loop
 
