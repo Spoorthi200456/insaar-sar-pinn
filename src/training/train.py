@@ -22,13 +22,15 @@ import torch
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
-from src.data.dataset import ARSDataset, build_dataloader
+from src.data.dataset import ARSDataset, build_dataloader, make_collate_fn
+from src.data.graph import StructureGraph
 from src.data.schemas import (
     ARSDesignParameters,
     ARSTelemetryRecord,
     RainfallObservation,
     SARObservation,
 )
+from src.data.splits import DEFAULT_FRACTIONS, StructureSplit, split_structures
 from src.models.coupling import head_to_los_cm
 from src.models.losses import CompositeARSLoss, LossWeights
 from src.models.network import ARSNet
@@ -225,6 +227,59 @@ def resolve_device(requested: str | None) -> str:
     return "cpu"
 
 
+def _batch_loss(model, loss_fn, batch, device):
+    """Forward pass + composite loss for one collated batch."""
+    out = model(
+        design_features=batch["design_features"].to(device),
+        displacement_cm=batch["displacement_cm"].to(device),
+        rainfall_mm=batch["rainfall_mm"].to(device),
+        time_delta_days=batch["time_delta_days"].to(device),
+        adjacency=batch["adjacency"].to(device),
+        incidence_angle_deg=batch["incidence_angle_deg"].to(device),
+        coherence_mask=batch["coherence_mask"].to(device),
+    )
+    return loss_fn(
+        predicted_displacement_cm=out.predicted_displacement_cm,
+        observed_displacement_cm=batch["displacement_cm"].to(device),
+        predicted_head_change=out.predicted_head_change,
+        hydraulic_conductivity=out.hydraulic_conductivity,
+        recharge_rate=out.recharge_rate,
+        design_recharge_capacity=batch["design_recharge_capacity"].to(device),
+        rainfall_mm=batch["rainfall_mm"].to(device),
+        adjacency=batch["physics_adjacency"].to(device),
+        node_mask=batch["loss_node_mask"].to(device),
+        valid_mask=batch["valid_step_mask"].to(device),
+        time_delta_days=batch["time_delta_days"].to(device),
+        storativity=out.storativity,
+        leakance=out.leakance,
+        recharge_area_m2=batch["recharge_area_m2"].to(device),
+        catchment_area_m2=batch["catchment_area_m2"].to(device),
+        observation_mask=batch["coherence_mask"].to(device),
+        well_head_m=batch["well_head_m"].to(device),
+        well_mask=batch["well_mask"].to(device),
+    )
+
+
+def full_batch(records, sequence_length, design_stats):
+    """One batch holding every structure in `records`, normalised with `design_stats`.
+    The graph is built from `records` alone: valid for a split, because no graph
+    edge crosses splits (src/data/splits.py)."""
+    dataset = ARSDataset(
+        records, sequence_length=sequence_length, design_feature_normalizers=design_stats
+    )
+    collate = make_collate_fn(graph=StructureGraph.from_records(records))
+    return collate([dataset[i] for i in range(len(dataset))])
+
+
+def evaluate(model, loss_fn, records, sequence_length, design_stats, device) -> float:
+    if not records:
+        return float("nan")
+    model.eval()
+    with torch.no_grad():
+        batch = full_batch(records, sequence_length, design_stats)
+        return float(_batch_loss(model, loss_fn, batch, device).total.detach().cpu())
+
+
 def train(
     records: list[ARSTelemetryRecord],
     epochs: int = 50,
@@ -234,6 +289,8 @@ def train(
     checkpoint_path: Path = Path("checkpoints/ars_net.pt"),
     device: str | None = None,
     num_workers: int = 2,
+    split_seed: int = 0,
+    split_fractions: tuple[float, float, float] = DEFAULT_FRACTIONS,
 ) -> None:
     device = resolve_device(device)
     log.info("training.start", n_records=len(records), device=device, epochs=epochs)
@@ -249,13 +306,36 @@ def train(
             note="InSAR only for these structures: absolute recharge not identifiable",
         )
 
+    # Review finding 24: split by connected group of structures, fixed seed.
+    split = split_structures(records, fractions=split_fractions, seed=split_seed)
+    by_id = {r.design.structure_id: r for r in records}
+    train_records = [by_id[s] for s in split.train]
+    val_records = [by_id[s] for s in split.validation]
+    test_records = [by_id[s] for s in split.test]
+    if not val_records or not test_records:
+        log.warning(
+            "training.no_validation_split",
+            reason="too few independent structure groups to hold any out",
+            note="checkpoint selected on TRAINING loss; nothing is held out",
+        )
+        train_records, val_records, test_records = list(records), [], []
+        split = StructureSplit([r.design.structure_id for r in records], [], [])
+    log.info(
+        "training.split",
+        seed=split_seed,
+        n_train=len(train_records),
+        n_validation=len(val_records),
+        n_test=len(test_records),
+    )
+
     loader = build_dataloader(
-        records,
-        batch_size=min(batch_size, len(records)),
+        records=train_records,
+        batch_size=min(batch_size, len(train_records)),
         sequence_length=sequence_length,
         shuffle=True,
         num_workers=num_workers,
     )
+    design_stats = loader.dataset.base._design_stats  # fitted on the training split only
 
     model = ARSNet(design_feature_dim=3).to(device)
     loss_fn = CompositeARSLoss(LossWeights())
@@ -263,6 +343,7 @@ def train(
     scheduler = CosineAnnealingLR(optimizer, T_max=epochs)
 
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    selected_on = "validation" if val_records else "training"
     best_loss = float("inf")
 
     for epoch in range(epochs):
@@ -270,61 +351,63 @@ def train(
         epoch_losses: list[float] = []
         for batch in loader:
             optimizer.zero_grad(set_to_none=True)
-
-            out = model(
-                design_features=batch["design_features"].to(device),
-                displacement_cm=batch["displacement_cm"].to(device),
-                rainfall_mm=batch["rainfall_mm"].to(device),
-                time_delta_days=batch["time_delta_days"].to(device),
-                adjacency=batch["adjacency"].to(device),
-                incidence_angle_deg=batch["incidence_angle_deg"].to(device),
-                coherence_mask=batch["coherence_mask"].to(device),
-            )
-
-            breakdown = loss_fn(
-                predicted_displacement_cm=out.predicted_displacement_cm,
-                observed_displacement_cm=batch["displacement_cm"].to(device),
-                predicted_head_change=out.predicted_head_change,
-                hydraulic_conductivity=out.hydraulic_conductivity,
-                recharge_rate=out.recharge_rate,
-                design_recharge_capacity=batch["design_recharge_capacity"].to(device),
-                rainfall_mm=batch["rainfall_mm"].to(device),
-                adjacency=batch["physics_adjacency"].to(device),
-                node_mask=batch["loss_node_mask"].to(device),
-                valid_mask=batch["valid_step_mask"].to(device),
-                time_delta_days=batch["time_delta_days"].to(device),
-                storativity=out.storativity,
-                leakance=out.leakance,
-                recharge_area_m2=batch["recharge_area_m2"].to(device),
-                catchment_area_m2=batch["catchment_area_m2"].to(device),
-                observation_mask=batch["coherence_mask"].to(device),
-                well_head_m=batch["well_head_m"].to(device),
-                well_mask=batch["well_mask"].to(device),
-            )
-
+            breakdown = _batch_loss(model, loss_fn, batch, device)
             breakdown.total.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
             optimizer.step()
             epoch_losses.append(float(breakdown.total.detach().cpu()))
 
         scheduler.step()
-        mean_loss = sum(epoch_losses) / max(len(epoch_losses), 1)
-        log.info("training.epoch", epoch=epoch, mean_loss=mean_loss, lr=scheduler.get_last_lr()[0])
+        train_loss = sum(epoch_losses) / max(len(epoch_losses), 1)
+        val_loss = evaluate(model, loss_fn, val_records, sequence_length, design_stats, device)
+        log.info(
+            "training.epoch",
+            epoch=epoch,
+            train_loss=train_loss,
+            val_loss=val_loss,
+            lr=scheduler.get_last_lr()[0],
+        )
 
-        if mean_loss < best_loss:
-            best_loss = mean_loss
+        score = val_loss if val_records else train_loss
+        if score < best_loss:
+            best_loss = score
             torch.save(
                 {
                     "model_state_dict": model.state_dict(),
                     "epoch": epoch,
                     "loss": best_loss,
+                    "train_loss": train_loss,
+                    "val_loss": val_loss,
+                    "selected_on": selected_on,
+                    "split": split.as_dict(),
+                    "split_seed": split_seed,
+                    "design_stats": {
+                        k: {"mean": v.mean, "std": v.std} for k, v in design_stats.items()
+                    },
                     "model_config": {"design_feature_dim": 3},
                 },
                 checkpoint_path,
             )
-            log.info("training.checkpoint_saved", path=str(checkpoint_path), loss=best_loss)
+            log.info(
+                "training.checkpoint_saved",
+                path=str(checkpoint_path),
+                loss=best_loss,
+                selected_on=selected_on,
+            )
 
-    log.info("training.complete", best_loss=best_loss)
+    # The test split is evaluated ONCE, with the selected checkpoint.
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+    model.load_state_dict(checkpoint["model_state_dict"])
+    test_loss = evaluate(model, loss_fn, test_records, sequence_length, design_stats, device)
+    checkpoint["test_loss"] = test_loss
+    torch.save(checkpoint, checkpoint_path)
+    log.info(
+        "training.complete",
+        best_loss=best_loss,
+        selected_on=selected_on,
+        test_loss=test_loss,
+        n_test=len(test_records),
+    )
 
 
 def main() -> None:

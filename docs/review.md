@@ -327,7 +327,7 @@ failed before the fix; see each commit message for the before/after output.
 | 21 | `src/data/schemas.py::SARObservation` | ±10 cm bound applied to *cumulative* displacement | Open (OQ17) |
 | 22 | `src/data/preprocessing.py::time_deltas_days` | Δt at step 0 is fabricated (copied from step 1) | Open (low) |
 | 23 | `src/backend/inference_engine.py::explain` | `latent_drift_score` does not measure drift | Open |
-| 24 | `src/training/train.py` | "Best" checkpoint chosen on training loss; no validation split | Open |
+| 24 | `src/training/train.py` | "Best" checkpoint chosen on training loss; no validation split | **Fixed** (review 3) |
 | 25 | `src/models/losses.py`, `train.py` | Well heads (`well_series`) never reach the loss | **Fixed** (author decision 4) |
 | 26 | `src/data/schemas.py::RainfallObservation` | Rain > 1000 mm silently clamped, no flag | Open (low) |
 | 27 | `src/backend/api.py` (WebSocket) | Streaming endpoint has no test | Open |
@@ -546,7 +546,12 @@ failed before the fix; see each commit message for the before/after output.
   so it is left for the author.
 - **24. No validation split.** `train.py` saves the checkpoint with the lowest
   *training* loss. No hold-out structures or time window, so overfitting is
-  invisible.
+  invisible. **Fixed in review 3:** `src/data/splits.py` splits by connected
+  structure group (no structure and no graph edge in two splits), fixed seed,
+  70/15/15. `train()` batches only training structures, fits normalisation
+  on them, selects the checkpoint on validation loss and evaluates the test
+  split once. See `docs/math/validation_split.md`. Tests: `tests/test_splits.py`
+  (6; before: 6 failed, no split module and no split in the checkpoint).
 - **25. Well heads unused.** `ARSTelemetryRecord.well_series` and the loss's
   `boundary_head` / `initial_head` inputs exist but no training path connects
   them. Without heads, R is identifiable only up to S_k/S (finding-2 plan
