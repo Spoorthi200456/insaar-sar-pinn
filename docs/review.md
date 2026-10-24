@@ -572,3 +572,16 @@ The four fixed findings were re-checked on the current code before any change:
 - Line numbers in the review agent's original report for `network.py`,
   `preprocessing.py` and `train.py` were offsets into concatenated listings
   and were wrong; the numbers above are the corrected ones.
+
+### Review 2, end state (2026-10-24, branch `review-2`, not merged)
+
+- Review-1 findings 2, 4, 5, 6, 7, 8, the `is_reliable` follow-up and the
+  integrator Δt note: all fixed, each with a test shown failing on its
+  parent commit (numbers in each section above and in each commit message).
+- Fresh review: findings 11–32. Fixed: 11–20, 29, 30. Open: 21–28, 31, 32.
+- Known-answer experiment: the pre-registered test **fails** (official run
+  1b). It is marked `xfail(strict=True)`. See
+  `experiments/synthetic_recovery/README.md`.
+- Full suite: **118 passed, 1 xfailed**; ruff and black clean.
+- Commits on `review-2` with more than one change: `1c6991c` (README claims,
+  finding 15, and the dashboard banner, finding 19; both text-only).
