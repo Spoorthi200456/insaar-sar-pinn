@@ -169,9 +169,9 @@ class TestIsolatedNodeKeepsOwnFeatures:
         v2 = v1.clone()
         v2[0, 1] += 1.0  # change only node 1's features
         out1, out2 = layer(v1, adj), layer(v2, adj)
-        assert not torch.allclose(out1[0, 1], out2[0, 1])   # node 1 sees its own change
-        assert torch.allclose(out1[0, 0], out2[0, 0])       # isolated others do not
-        assert out1[0, 1].abs().sum() > 0                   # embedding is not all-zero
+        assert not torch.allclose(out1[0, 1], out2[0, 1])  # node 1 sees its own change
+        assert torch.allclose(out1[0, 0], out2[0, 0])  # isolated others do not
+        assert out1[0, 1].abs().sum() > 0  # embedding is not all-zero
 
     def test_design_features_change_k_of_isolated_structure(self, synthetic_records):
         batch = _batch_from_records(synthetic_records, sequence_length=16)
@@ -224,7 +224,7 @@ class TestHeadIntegratorUsesRealDt:
         with torch.no_grad():
             out = self._forward(model, batch, dt)
         h, v = out.predicted_head_change, out.head_rate
-        assert torch.allclose(h[:, 0], torch.zeros_like(h[:, 0]))              # reference step
+        assert torch.allclose(h[:, 0], torch.zeros_like(h[:, 0]))  # reference step
         assert torch.allclose(h[:, 1:] - h[:, :-1], dt[:, 1:] * v[:, 1:], atol=1e-6)
 
     def test_head_is_zero_on_padding_and_first_real_step(self, synthetic_records):

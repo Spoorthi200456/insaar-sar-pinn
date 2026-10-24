@@ -44,17 +44,17 @@ class ARSSample:
     """Fixed-length (T timesteps) tensors for a single ARS structure."""
 
     structure_id: str
-    displacement_cm: torch.Tensor          # (T,)
-    rainfall_mm: torch.Tensor              # (T,)
-    time_delta_days: torch.Tensor          # (T,)
-    coherence_mask: torch.Tensor           # (T,) bool, True == reliable observation
-    valid_step_mask: torch.Tensor          # (T,) bool, True == real acquisition (not padding)
-    design_features: torch.Tensor          # (Q,)
-    coordinates: torch.Tensor              # (2,) lat, lon
+    displacement_cm: torch.Tensor  # (T,)
+    rainfall_mm: torch.Tensor  # (T,)
+    time_delta_days: torch.Tensor  # (T,)
+    coherence_mask: torch.Tensor  # (T,) bool, True == reliable observation
+    valid_step_mask: torch.Tensor  # (T,) bool, True == real acquisition (not padding)
+    design_features: torch.Tensor  # (Q,)
+    coordinates: torch.Tensor  # (2,) lat, lon
     design_recharge_capacity: torch.Tensor  # scalar [m³/day]
-    recharge_area_m2: torch.Tensor          # scalar A [m²] (finding 6)
-    catchment_area_m2: torch.Tensor         # scalar A_catch [m²]
-    incidence_angle_deg: torch.Tensor      # scalar [deg], mean over the series' acquisitions
+    recharge_area_m2: torch.Tensor  # scalar A [m²] (finding 6)
+    catchment_area_m2: torch.Tensor  # scalar A_catch [m²]
+    incidence_angle_deg: torch.Tensor  # scalar [deg], mean over the series' acquisitions
 
 
 class ARSDataset(Dataset):
@@ -254,9 +254,7 @@ class ARSCollateFn:
             "valid_step_mask": torch.stack([s.valid_step_mask for s in samples]),
             "design_features": torch.stack([s.design_features for s in samples]),
             "coordinates": torch.stack([s.coordinates for s in samples]),
-            "design_recharge_capacity": torch.stack(
-                [s.design_recharge_capacity for s in samples]
-            ),
+            "design_recharge_capacity": torch.stack([s.design_recharge_capacity for s in samples]),
             "recharge_area_m2": torch.stack([s.recharge_area_m2 for s in samples]),
             "catchment_area_m2": torch.stack([s.catchment_area_m2 for s in samples]),
             "incidence_angle_deg": torch.stack([s.incidence_angle_deg for s in samples]),

@@ -59,13 +59,13 @@ def _weighted_laplacian_divergence(
     returns:      (B, T)    per-node, per-timestep divergence estimate
     """
     b, t = head.shape
-    k_i = conductivity.view(b, 1)              # (B, 1)
-    k_avg = 0.5 * (k_i + k_i.T)                 # (B, B), (K_i + K_j) / 2
-    weighted_adj = adjacency * k_avg            # (B, B)
+    k_i = conductivity.view(b, 1)  # (B, 1)
+    k_avg = 0.5 * (k_i + k_i.T)  # (B, B), (K_i + K_j) / 2
+    weighted_adj = adjacency * k_avg  # (B, B)
 
     # sum_j a_ij*(K_i+K_j)/2 * h_j(t)  -  h_i(t) * sum_j a_ij*(K_i+K_j)/2
-    neighbor_term = torch.einsum("ij,jt->it", weighted_adj, head)      # (B, T)
-    self_term = head * weighted_adj.sum(dim=1, keepdim=True)           # (B, T)
+    neighbor_term = torch.einsum("ij,jt->it", weighted_adj, head)  # (B, T)
+    self_term = head * weighted_adj.sum(dim=1, keepdim=True)  # (B, T)
     return neighbor_term - self_term
 
 
@@ -171,23 +171,23 @@ class CompositeARSLoss(nn.Module):
 
     def forward(
         self,
-        predicted_displacement_cm: torch.Tensor,   # (B, T)  d_pred_i(t)
-        observed_displacement_cm: torch.Tensor,     # (B, T)  d_obs_i(t)
-        predicted_head_change: torch.Tensor,        # (B, T)  h_i(t) [m]
-        hydraulic_conductivity: torch.Tensor,        # (B,)    T_i [m²/day] (form (b))
-        recharge_rate: torch.Tensor,                 # (B, T)  R_i(t) [m/day]
-        design_recharge_capacity: torch.Tensor,      # (B,)    Q_i,design [m³/day]
-        rainfall_mm: torch.Tensor,                    # (B, T)  rain per InSAR interval [mm]
-        adjacency: torch.Tensor,                      # (B, B)
-        time_delta_days: torch.Tensor,                # (B, T)  Δt_k [day], 0 on padding
-        storativity: torch.Tensor,                    # scalar  S [dimensionless]
-        recharge_area_m2: torch.Tensor,               # (B,)    A, structure recharge area [m²]
-        catchment_area_m2: torch.Tensor,              # (B,)    A_catch [m²]
-        leakance: torch.Tensor | float = 0.0,         # scalar  L [1/day] (finding 11)
-        observation_mask: torch.Tensor | None = None,      # (B, T) bool, True == reliable
-        boundary_head: torch.Tensor | None = None,          # (B, T) known head, if any
-        boundary_mask: torch.Tensor | None = None,           # (B, T) bool, True where known
-        initial_head: torch.Tensor | None = None,             # (B,)  h_i(0) if known
+        predicted_displacement_cm: torch.Tensor,  # (B, T)  d_pred_i(t)
+        observed_displacement_cm: torch.Tensor,  # (B, T)  d_obs_i(t)
+        predicted_head_change: torch.Tensor,  # (B, T)  h_i(t) [m]
+        hydraulic_conductivity: torch.Tensor,  # (B,)    T_i [m²/day] (form (b))
+        recharge_rate: torch.Tensor,  # (B, T)  R_i(t) [m/day]
+        design_recharge_capacity: torch.Tensor,  # (B,)    Q_i,design [m³/day]
+        rainfall_mm: torch.Tensor,  # (B, T)  rain per InSAR interval [mm]
+        adjacency: torch.Tensor,  # (B, B)
+        time_delta_days: torch.Tensor,  # (B, T)  Δt_k [day], 0 on padding
+        storativity: torch.Tensor,  # scalar  S [dimensionless]
+        recharge_area_m2: torch.Tensor,  # (B,)    A, structure recharge area [m²]
+        catchment_area_m2: torch.Tensor,  # (B,)    A_catch [m²]
+        leakance: torch.Tensor | float = 0.0,  # scalar  L [1/day] (finding 11)
+        observation_mask: torch.Tensor | None = None,  # (B, T) bool, True == reliable
+        boundary_head: torch.Tensor | None = None,  # (B, T) known head, if any
+        boundary_mask: torch.Tensor | None = None,  # (B, T) bool, True where known
+        initial_head: torch.Tensor | None = None,  # (B,)  h_i(0) if known
         node_mask: torch.Tensor | None = None,  # (B,) bool, True == seed node (finding 4)
         valid_mask: torch.Tensor | None = None,  # (B, T) bool, True == real acquisition
     ) -> LossBreakdown:
@@ -249,9 +249,9 @@ class CompositeARSLoss(nn.Module):
         # flux per unit area. R·A [m³/day] is the structure's recharge volume
         # rate, comparable with Q_design [m³/day]. Both hinges are ratios, so
         # dimensionless.
-        area = recharge_area_m2.unsqueeze(-1)                      # (B, 1) m²
-        volume_rate = recharge_rate * area                         # (B, T) m³/day
-        capacity = design_recharge_capacity.unsqueeze(-1)          # (B, 1) m³/day
+        area = recharge_area_m2.unsqueeze(-1)  # (B, 1) m²
+        volume_rate = recharge_rate * area  # (B, T) m³/day
+        capacity = design_recharge_capacity.unsqueeze(-1)  # (B, 1) m³/day
         design_capacity_penalty = torch.clamp(volume_rate / capacity - 1.0, min=0.0) ** 2
         design_capacity_loss = _seed_mean_over_valid_steps(design_capacity_penalty)
 
@@ -266,7 +266,7 @@ class CompositeARSLoss(nn.Module):
         recharge_volume = (volume_rate * time_delta_days * valid_f).sum(dim=1)  # (B,) m³
         contributing_area = recharge_area_m2 + self.runoff_coefficient * catchment_area_m2
         rain_m = (rainfall_mm * valid_f).sum(dim=1) / MM_PER_M
-        inflow_volume = rain_m * contributing_area                               # (B,) m³
+        inflow_volume = rain_m * contributing_area  # (B,) m³
         volume_scale = inflow_volume + _MASS_BALANCE_FLOOR_M * recharge_area_m2
         mass_balance_per_node = (
             torch.clamp((recharge_volume - inflow_volume) / volume_scale, min=0.0) ** 2
@@ -278,7 +278,7 @@ class CompositeARSLoss(nn.Module):
         # the units of T, and every edge counts once (the 1/m² stencil weight
         # sizes flow, not similarity).
         log_t = torch.log(hydraulic_conductivity.clamp_min(_EPS))
-        log_diff_sq = (log_t.unsqueeze(0) - log_t.unsqueeze(1)) ** 2              # (B, B)
+        log_diff_sq = (log_t.unsqueeze(0) - log_t.unsqueeze(1)) ** 2  # (B, B)
         edges = (adjacency > 0).float() * node_f.unsqueeze(-1)
         smoothness_loss = (edges * log_diff_sq).sum() / edges.sum().clamp_min(1.0)
 

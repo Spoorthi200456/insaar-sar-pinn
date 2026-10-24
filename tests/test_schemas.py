@@ -56,7 +56,8 @@ class TestSARObservation:
             structure_id="ARS-0001",
             timestamp=datetime.now(UTC),
             los_displacement_cm=15.0,
-            coherence=0.9, incidence_angle_deg=35.0,
+            coherence=0.9,
+            incidence_angle_deg=35.0,
         )
         assert abs(obs.los_displacement_cm) < 10.0
         assert obs.quality_flag == DataQualityFlag.OUT_OF_BOUNDS_CLAMPED
@@ -66,7 +67,8 @@ class TestSARObservation:
             structure_id="ARS-0001",
             timestamp=datetime.now(UTC),
             los_displacement_cm=0.5,
-            coherence=0.3, incidence_angle_deg=35.0,
+            coherence=0.3,
+            incidence_angle_deg=35.0,
         )
         assert obs.quality_flag == DataQualityFlag.LOW_COHERENCE
         assert obs.is_reliable is False
@@ -74,7 +76,10 @@ class TestSARObservation:
     def test_naive_timestamp_becomes_utc(self):
         naive = datetime(2024, 1, 1, 12, 0, 0)
         obs = SARObservation(
-            structure_id="ARS-0001", timestamp=naive, los_displacement_cm=0.1, coherence=0.9,
+            structure_id="ARS-0001",
+            timestamp=naive,
+            los_displacement_cm=0.1,
+            coherence=0.9,
             incidence_angle_deg=35.0,
         )
         assert obs.timestamp.tzinfo is not None
@@ -85,7 +90,8 @@ class TestSARObservation:
                 structure_id="ARS-0001",
                 timestamp=datetime.now(UTC),
                 los_displacement_cm=0.1,
-                coherence=1.5, incidence_angle_deg=35.0,
+                coherence=1.5,
+                incidence_angle_deg=35.0,
             )
 
 
@@ -110,7 +116,8 @@ class TestARSTelemetryRecord:
             structure_id="ARS-9999",
             timestamp=datetime.now(UTC),
             los_displacement_cm=0.1,
-            coherence=0.9, incidence_angle_deg=35.0,
+            coherence=0.9,
+            incidence_angle_deg=35.0,
         )
         rain = RainfallObservation(
             structure_id="ARS-0001", timestamp=datetime.now(UTC), rainfall_mm=10.0
@@ -122,10 +129,20 @@ class TestARSTelemetryRecord:
         design = _design()
         ts = datetime.now(UTC)
         sar = [
-            SARObservation(structure_id="ARS-0001", timestamp=ts, los_displacement_cm=0.1,
-                           coherence=0.9, incidence_angle_deg=35.0),
-            SARObservation(structure_id="ARS-0001", timestamp=ts, los_displacement_cm=0.1,
-                           coherence=0.2, incidence_angle_deg=35.0),
+            SARObservation(
+                structure_id="ARS-0001",
+                timestamp=ts,
+                los_displacement_cm=0.1,
+                coherence=0.9,
+                incidence_angle_deg=35.0,
+            ),
+            SARObservation(
+                structure_id="ARS-0001",
+                timestamp=ts,
+                los_displacement_cm=0.1,
+                coherence=0.2,
+                incidence_angle_deg=35.0,
+            ),
         ]
         rain = [RainfallObservation(structure_id="ARS-0001", timestamp=ts, rainfall_mm=10.0)]
         record = ARSTelemetryRecord(design=design, sar_series=sar, rainfall_series=rain)
@@ -139,8 +156,13 @@ class TestTelemetryBatch:
         record = ARSTelemetryRecord(
             design=design,
             sar_series=[
-                SARObservation(structure_id="ARS-0001", timestamp=ts, los_displacement_cm=0.1,
-                               coherence=0.9, incidence_angle_deg=35.0)
+                SARObservation(
+                    structure_id="ARS-0001",
+                    timestamp=ts,
+                    los_displacement_cm=0.1,
+                    coherence=0.9,
+                    incidence_angle_deg=35.0,
+                )
             ],
             rainfall_series=[
                 RainfallObservation(structure_id="ARS-0001", timestamp=ts, rainfall_mm=10.0)
@@ -158,8 +180,13 @@ class TestIsReliableMatchesDatasetRule:
     """Same rule as the training dataset (review finding 10 / review-2 item)."""
 
     def _obs(self, d, coh):
-        return SARObservation(structure_id="ARS-0001", timestamp=datetime(2024, 1, 1, tzinfo=UTC),
-                              los_displacement_cm=d, coherence=coh, incidence_angle_deg=35.0)
+        return SARObservation(
+            structure_id="ARS-0001",
+            timestamp=datetime(2024, 1, 1, tzinfo=UTC),
+            los_displacement_cm=d,
+            coherence=coh,
+            incidence_angle_deg=35.0,
+        )
 
     def test_clamped_high_coherence_observation_is_not_reliable(self):
         obs = self._obs(-14.0, 0.95)  # stored as -9.999, flagged CLAMPED
@@ -179,6 +206,7 @@ class TestIsReliableMatchesDatasetRule:
 
     def test_threshold_is_the_shared_constant(self):
         from src.data.preprocessing import COHERENCE_THRESHOLD
+
         assert self._obs(0.1, COHERENCE_THRESHOLD).is_reliable is True
         below = self._obs(0.1, COHERENCE_THRESHOLD - 1e-6)
         assert below.is_reliable is False

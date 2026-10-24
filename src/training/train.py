@@ -38,8 +38,8 @@ log = structlog.get_logger(__name__)
 
 # Planted truths of the smoke-test generator (PROVISIONAL, illustrative values,
 # not calibrated to any real aquifer).
-SYNTH_STORATIVITY = 0.05          # S [dimensionless]
-SYNTH_SKELETAL_STORAGE = 1e-3     # S_k [dimensionless] (compliant alluvium end, so signal > noise)
+SYNTH_STORATIVITY = 0.05  # S [dimensionless]
+SYNTH_SKELETAL_STORAGE = 1e-3  # S_k [dimensionless] (compliant alluvium end, so signal > noise)
 SYNTH_DRAINAGE_TIMESCALE_DAYS = 60.0  # S / L: head recession time scale [day]
 
 
@@ -205,8 +205,11 @@ def train(
     log.info("training.start", n_records=len(records), device=device, epochs=epochs)
 
     loader = build_dataloader(
-        records, batch_size=min(batch_size, len(records)), sequence_length=sequence_length,
-        shuffle=True, num_workers=2,
+        records,
+        batch_size=min(batch_size, len(records)),
+        sequence_length=sequence_length,
+        shuffle=True,
+        num_workers=2,
     )
 
     model = ARSNet(design_feature_dim=3).to(device)

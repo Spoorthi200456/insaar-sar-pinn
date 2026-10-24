@@ -34,8 +34,8 @@ MIN_EDGE_LENGTH_M = 1.0  # two connected structures closer than this are a data 
 @dataclass
 class StructureGraph:
     structure_ids: list[str]
-    physics_adjacency: np.ndarray   # (N, N) a_ij [1/m²]
-    attention_prior: np.ndarray     # (N, N) dimensionless
+    physics_adjacency: np.ndarray  # (N, N) a_ij [1/m²]
+    attention_prior: np.ndarray  # (N, N) dimensionless
     index: dict[str, int] = field(init=False)
 
     def __post_init__(self) -> None:
@@ -48,7 +48,7 @@ class StructureGraph:
     def from_coordinates(
         cls,
         structure_ids: Sequence[str],
-        coordinates_deg: np.ndarray,                       # (N, 2) lat, lon
+        coordinates_deg: np.ndarray,  # (N, 2) lat, lon
         edges: Iterable[tuple[str, str, float]] | None = None,
         connectivity_radius_km: float = DEFAULT_CONNECTIVITY_RADIUS_KM,
     ) -> StructureGraph:
@@ -81,8 +81,8 @@ class StructureGraph:
     @classmethod
     def from_records(
         cls,
-        records,                     # list[ARSTelemetryRecord]
-        edges=None,                  # list[GraphEdge] | None
+        records,  # list[ARSTelemetryRecord]
+        edges=None,  # list[GraphEdge] | None
         connectivity_radius_km: float = DEFAULT_CONNECTIVITY_RADIUS_KM,
     ) -> StructureGraph:
         ids = [r.design.structure_id for r in records]

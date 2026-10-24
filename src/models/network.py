@@ -44,16 +44,16 @@ from src.models.layers import (
 
 @dataclass
 class ARSNetOutput:
-    hydraulic_conductivity: torch.Tensor      # (B,)  K_i
-    recharge_rate: torch.Tensor               # (B, T) Q_i(t)
-    predicted_head_change: torch.Tensor       # (B, T) h_i(t) - h_i(t_first) [m]
-    predicted_displacement_cm: torch.Tensor   # (B, T) d_pred_i(t)
-    node_embedding: torch.Tensor              # (B, H) v_i^(L), for explainability
-    temporal_embedding: torch.Tensor          # (B, D) z_i, for explainability
-    storativity: torch.Tensor                 # scalar S [dimensionless], in (0, 1)
-    skeletal_storage: torch.Tensor            # scalar S_k [dimensionless], in (1e-6, 1e-2)
-    head_rate: torch.Tensor                   # (B, T) v_i(t) = ∂h/∂t estimate [m/day]
-    leakance: torch.Tensor                    # scalar L [1/day], in (1e-6, 1e-1)
+    hydraulic_conductivity: torch.Tensor  # (B,)  K_i
+    recharge_rate: torch.Tensor  # (B, T) Q_i(t)
+    predicted_head_change: torch.Tensor  # (B, T) h_i(t) - h_i(t_first) [m]
+    predicted_displacement_cm: torch.Tensor  # (B, T) d_pred_i(t)
+    node_embedding: torch.Tensor  # (B, H) v_i^(L), for explainability
+    temporal_embedding: torch.Tensor  # (B, D) z_i, for explainability
+    storativity: torch.Tensor  # scalar S [dimensionless], in (0, 1)
+    skeletal_storage: torch.Tensor  # scalar S_k [dimensionless], in (1e-6, 1e-2)
+    head_rate: torch.Tensor  # (B, T) v_i(t) = ∂h/∂t estimate [m/day]
+    leakance: torch.Tensor  # scalar L [1/day], in (1e-6, 1e-1)
 
 
 # Characteristic head rate used to non-dimensionalise the head-rate decoder
@@ -169,14 +169,14 @@ class ARSNet(nn.Module):
 
     def forward(
         self,
-        design_features: torch.Tensor,       # (B, design_feature_dim)
-        displacement_cm: torch.Tensor,       # (B, T)
-        rainfall_mm: torch.Tensor,           # (B, T)
-        time_delta_days: torch.Tensor,       # (B, T)
-        adjacency: torch.Tensor,             # (B, B) or (1, B, B)
-        incidence_angle_deg: torch.Tensor,   # (B,) radar incidence angle [deg]
+        design_features: torch.Tensor,  # (B, design_feature_dim)
+        displacement_cm: torch.Tensor,  # (B, T)
+        rainfall_mm: torch.Tensor,  # (B, T)
+        time_delta_days: torch.Tensor,  # (B, T)
+        adjacency: torch.Tensor,  # (B, B) or (1, B, B)
+        incidence_angle_deg: torch.Tensor,  # (B,) radar incidence angle [deg]
         coherence_mask: torch.Tensor | None = None,  # (B, T) bool, True == reliable
-        cv_patch: torch.Tensor | None = None,         # (B, C, H, W)
+        cv_patch: torch.Tensor | None = None,  # (B, C, H, W)
     ) -> ARSNetOutput:
         if self.use_cv_branch:
             if cv_patch is None:

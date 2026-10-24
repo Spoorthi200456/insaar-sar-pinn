@@ -22,6 +22,7 @@ import torch.nn.functional as F
 # CV Encoder (footprint segmentation feature extractor)
 # --------------------------------------------------------------------------- #
 
+
 class CVEncoder(nn.Module):
     """
     Lightweight CNN encoder over (mask, displacement-map) patches.
@@ -63,6 +64,7 @@ class CVEncoder(nn.Module):
 # --------------------------------------------------------------------------- #
 # Hydrologic Graph Attention Network layer
 # --------------------------------------------------------------------------- #
+
 
 class HydrologicGATLayer(nn.Module):
     """
@@ -127,13 +129,13 @@ class HydrologicGATLayer(nn.Module):
         e = self.leaky_relu(src_score.unsqueeze(-1) + dst_score.unsqueeze(-2))  # (B,H,N,N)
 
         eye = torch.eye(n, dtype=adjacency.dtype, device=adjacency.device).unsqueeze(0)
-        prior = adjacency * (1.0 - eye) + eye   # self-loop with prior weight 1
-        support = (prior > 0).unsqueeze(1)      # (B, 1, N, N); every row has its diagonal
+        prior = adjacency * (1.0 - eye) + eye  # self-loop with prior weight 1
+        support = (prior > 0).unsqueeze(1)  # (B, 1, N, N); every row has its diagonal
         e = e.masked_fill(~support, float("-inf"))
 
         alpha = F.softmax(e, dim=-1)
         alpha = torch.nan_to_num(alpha, nan=0.0)
-        alpha = alpha * prior.unsqueeze(1)      # fold the hydraulic-connectivity prior in
+        alpha = alpha * prior.unsqueeze(1)  # fold the hydraulic-connectivity prior in
         alpha = self.dropout(alpha)
 
         out = torch.einsum("bhij,bhje->bhie", alpha, h)  # (B, H, N, out_dim)
@@ -183,6 +185,7 @@ class HydrologicGATStack(nn.Module):
 # Time-delta-aware positional encoding + Temporal Alignment Transformer
 # --------------------------------------------------------------------------- #
 
+
 class TimeDeltaPositionalEncoding(nn.Module):
     """
     Encodes the *actual* elapsed time (days) since the previous acquisition,
@@ -223,7 +226,7 @@ class AttentionPool1D(nn.Module):
             raise ValueError("embed_dim must be divisible by num_heads")
         self.num_heads = num_heads
         self.head_dim = embed_dim // num_heads
-        self.scale = self.head_dim ** -0.5
+        self.scale = self.head_dim**-0.5
 
         self.q_proj = nn.Linear(embed_dim, embed_dim)
         self.k_proj = nn.Linear(embed_dim, embed_dim)
@@ -233,8 +236,8 @@ class AttentionPool1D(nn.Module):
 
     def forward(
         self,
-        query: torch.Tensor,               # (B, 1, E)
-        key_value: torch.Tensor,           # (B, T, E)
+        query: torch.Tensor,  # (B, 1, E)
+        key_value: torch.Tensor,  # (B, T, E)
         key_padding_mask: torch.Tensor | None = None,  # (B, T) bool, True == ignore
     ) -> torch.Tensor:
         b, t, e = key_value.shape
@@ -314,6 +317,7 @@ class TemporalAlignmentTransformer(nn.Module):
 # --------------------------------------------------------------------------- #
 # Recharge-rate temporal decoder head
 # --------------------------------------------------------------------------- #
+
 
 class RechargeDecoder(nn.Module):
     """

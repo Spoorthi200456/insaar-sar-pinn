@@ -36,7 +36,7 @@ class TestHeadToLOS:
 
     def test_coupling_units_exact(self):
         dh = torch.tensor([[1.0]])  # 1 m of head change
-        s_k = torch.tensor(1e-4)    # dimensionless
+        s_k = torch.tensor(1e-4)  # dimensionless
         # theta = 0: 1e-4 * 1 m = 1e-4 m = 0.01 cm
         assert head_to_los_cm(dh, s_k, torch.tensor([0.0])).item() == pytest.approx(0.01, rel=1e-6)
         # theta = 60 deg: cos 60 = 0.5 -> 0.005 cm
@@ -128,8 +128,13 @@ class TestSyntheticGeneratorUsesModelCoupling:
 
 
 def _sar(ts, **kw):
-    base = dict(structure_id="ARS-0001", timestamp=ts, los_displacement_cm=0.1, coherence=0.9,
-                incidence_angle_deg=35.0)
+    base = dict(
+        structure_id="ARS-0001",
+        timestamp=ts,
+        los_displacement_cm=0.1,
+        coherence=0.9,
+        incidence_angle_deg=35.0,
+    )
     base.update(kw)
     return SARObservation(**base)
 
@@ -137,8 +142,12 @@ def _sar(ts, **kw):
 class TestSchemaIncidenceAndTrack:
     def test_missing_incidence_angle_rejected(self):
         with pytest.raises(ValidationError):
-            SARObservation(structure_id="A", timestamp=datetime.now(UTC),
-                           los_displacement_cm=0.1, coherence=0.9)
+            SARObservation(
+                structure_id="A",
+                timestamp=datetime.now(UTC),
+                los_displacement_cm=0.1,
+                coherence=0.9,
+            )
 
     @pytest.mark.parametrize("theta", [5.0, 70.0])
     def test_out_of_range_incidence_angle_rejected(self, theta):
@@ -147,11 +156,19 @@ class TestSchemaIncidenceAndTrack:
 
     def test_mixed_tracks_rejected(self):
         t0 = datetime(2024, 1, 1, tzinfo=UTC)
-        design = ARSDesignParameters(structure_id="ARS-0001", latitude=12.9, longitude=77.5,
-                                     height_m=5.0, storage_volume_m3=1000.0, catchment_area_km2=2.0,
-                                     design_recharge_capacity_m3_per_day=100.0)
-        sar = [_sar(t0, track_direction="ascending"),
-               _sar(t0 + timedelta(days=12), track_direction="descending")]
+        design = ARSDesignParameters(
+            structure_id="ARS-0001",
+            latitude=12.9,
+            longitude=77.5,
+            height_m=5.0,
+            storage_volume_m3=1000.0,
+            catchment_area_km2=2.0,
+            design_recharge_capacity_m3_per_day=100.0,
+        )
+        sar = [
+            _sar(t0, track_direction="ascending"),
+            _sar(t0 + timedelta(days=12), track_direction="descending"),
+        ]
         rain = [RainfallObservation(structure_id="ARS-0001", timestamp=t0, rainfall_mm=1.0)]
         with pytest.raises(ValidationError):
             ARSTelemetryRecord(design=design, sar_series=sar, rainfall_series=rain)

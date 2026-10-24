@@ -77,9 +77,7 @@ class TestExplainEndpoint:
     def test_explain_unknown_structure_returns_404(self, client):
         payload = _prediction_request_payload(n_structures=2)
         batch = payload["batch"]
-        response = client.request(
-            "GET", "/api/v1/explain/NOT-A-REAL-ID", content=json.dumps(batch)
-        )
+        response = client.request("GET", "/api/v1/explain/NOT-A-REAL-ID", content=json.dumps(batch))
         assert response.status_code == 404
 
 

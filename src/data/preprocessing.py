@@ -60,9 +60,7 @@ def interpolate_missing_1d(
         return np.zeros_like(values), np.ones_like(values, dtype=bool)
 
     idx = np.arange(len(values))
-    values[~valid_mask] = np.interp(
-        idx[~valid_mask], idx[valid_mask], values[valid_mask]
-    )
+    values[~valid_mask] = np.interp(idx[~valid_mask], idx[valid_mask], values[valid_mask])
     return values, was_interpolated
 
 

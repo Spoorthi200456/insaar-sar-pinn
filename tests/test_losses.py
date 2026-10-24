@@ -132,8 +132,8 @@ class TestPDEResidualPhysics:
     """
 
     S = 0.1
-    R = 1e-4                 # m/day, recharge INTO the aquifer
-    RATE = R / S             # m/day head rise that exactly balances R
+    R = 1e-4  # m/day, recharge INTO the aquifer
+    RATE = R / S  # m/day head rise that exactly balances R
 
     def _batch(self, head, dt):
         b, t = head.shape
@@ -179,8 +179,12 @@ class TestPDEResidualPhysics:
         # Same physical head rate sampled at irregular Sentinel-1 gaps.
         head, dt = self._head_from_dt([12.0, 6.0, 12.0, 24.0, 12.0, 6.0], self.RATE)
         residual, valid = pde_residual(
-            head, dt, torch.tensor(self.S), torch.ones(1),
-            torch.full_like(head, self.R), torch.zeros(1, 1),
+            head,
+            dt,
+            torch.tensor(self.S),
+            torch.ones(1),
+            torch.full_like(head, self.R),
+            torch.zeros(1, 1),
         )
         assert valid[0, 1:].all()
         assert torch.allclose(residual[0, 1:], torch.zeros(5), atol=1e-9)
@@ -193,8 +197,12 @@ class TestPDEResidualPhysics:
         dt_p = torch.cat([torch.zeros(1, pad), dt], dim=1)
 
         _, valid_p = pde_residual(
-            head_p, dt_p, torch.tensor(self.S), torch.ones(1),
-            torch.full_like(head_p, self.R), torch.zeros(1, 1),
+            head_p,
+            dt_p,
+            torch.tensor(self.S),
+            torch.ones(1),
+            torch.full_like(head_p, self.R),
+            torch.zeros(1, 1),
         )
         # padding, the first real step (predecessor is padding) and k=0 are invalid
         assert not valid_p[0, : pad + 1].any()
@@ -218,8 +226,8 @@ class TestRegularizerUnits:
     Derivation: docs/math/recharge_units.md.
     """
 
-    A = 1000.0          # m2 water-spread area
-    A_CATCH = 0.5e6     # m2 (0.5 km2)
+    A = 1000.0  # m2 water-spread area
+    A_CATCH = 0.5e6  # m2 (0.5 km2)
 
     def _batch(self, r, p_mm, q_design, b=2, t=6, area=A, catch=A_CATCH):
         return dict(
@@ -299,11 +307,11 @@ class TestPDEMaskAndClamp:
         )
 
     def test_low_coherence_step_still_constrained_by_physics(self):
-        head = torch.zeros(1, 5)                  # flat head ...
+        head = torch.zeros(1, 5)  # flat head ...
         recharge = torch.zeros(1, 5)
-        recharge[0, 3] = 1e-3                     # ... but recharge at step 3: r = -1e-3
+        recharge[0, 3] = 1e-3  # ... but recharge at step 3: r = -1e-3
         mask = torch.ones(1, 5, dtype=torch.bool)
-        mask[0, 3] = False                        # step 3 has low coherence
+        mask[0, 3] = False  # step 3 has low coherence
         out = CompositeARSLoss(LossWeights())(**self._batch(head, recharge, mask))
         # valid PDE steps are k = 1..4 (4 steps); only k = 3 is non-zero
         assert out.pde.item() == pytest.approx((1e-3) ** 2 / 4, rel=1e-5)
@@ -312,10 +320,17 @@ class TestPDEMaskAndClamp:
         head = torch.zeros(1, 4)
         recharge = torch.full((1, 4), 5e4, requires_grad=True)  # |r| = 5e4 m/day > old 1e4 clamp
         mask = torch.ones(1, 4, dtype=torch.bool)
-        out = CompositeARSLoss(LossWeights(pde=1.0, data=0, boundary=0, design_capacity=0,
-                                           non_negativity=0, mass_balance=0,
-                                           conductivity_smoothness=0))(
-            **self._batch(head, recharge, mask))
+        out = CompositeARSLoss(
+            LossWeights(
+                pde=1.0,
+                data=0,
+                boundary=0,
+                design_capacity=0,
+                non_negativity=0,
+                mass_balance=0,
+                conductivity_smoothness=0,
+            )
+        )(**self._batch(head, recharge, mask))
         out.total.backward()
         assert recharge.grad is not None
         assert recharge.grad[0, 1:].abs().min().item() > 0
@@ -348,7 +363,7 @@ class TestRegularizersMasked:
         )
 
     def test_padding_does_not_change_regularizers(self):
-        r = torch.tensor([[0.05, 0.2, 0.3, 0.01]])        # 50, 200, 300, 10 m3/day vs Q = 100
+        r = torch.tensor([[0.05, 0.2, 0.3, 0.01]])  # 50, 200, 300, 10 m3/day vs Q = 100
         dt = torch.full((1, 4), 12.0)
         rain = torch.tensor([[1.0, 0.0, 2.0, 0.5]])
         pad = 6
@@ -376,10 +391,10 @@ class TestRegularizersMasked:
 
     def test_t_smoothness_is_dimensionless_log_difference(self):
         args = self._batch(torch.zeros(3, 2), torch.full((3, 2), 12.0), torch.zeros(3, 2))
-        args["adjacency"] = torch.tensor([[0.0, 2.5e-7, 0.0],
-                                          [2.5e-7, 0.0, 1e-8],
-                                          [0.0, 1e-8, 0.0]])            # 1/m², unequal
-        args["hydraulic_conductivity"] = torch.tensor([1.0, 10.0, 100.0])   # m²/day
+        args["adjacency"] = torch.tensor(
+            [[0.0, 2.5e-7, 0.0], [2.5e-7, 0.0, 1e-8], [0.0, 1e-8, 0.0]]
+        )  # 1/m², unequal
+        args["hydraulic_conductivity"] = torch.tensor([1.0, 10.0, 100.0])  # m²/day
         loss_fn = CompositeARSLoss(LossWeights())
         base = loss_fn(**args).conductivity_smoothness.item()
         # every edge is one decade apart: mean (ln 10)^2, independent of a_ij size
@@ -405,15 +420,22 @@ class TestLeakageSink:
         h = [h0]
         for dt in dt_days[1:]:
             h.append(h[-1] / (1.0 + dt * self.L / self.S))
-        return (torch.tensor([h], dtype=torch.float64),
-                torch.tensor([list(dt_days)], dtype=torch.float64))
+        return (
+            torch.tensor([h], dtype=torch.float64),
+            torch.tensor([list(dt_days)], dtype=torch.float64),
+        )
 
     def test_pure_recession_without_recharge_has_zero_residual(self):
         h, dt = self._recession()
-        r, valid = pde_residual(h, dt, torch.tensor(self.S, dtype=torch.float64),
-                                torch.ones(1, dtype=torch.float64), torch.zeros_like(h),
-                                torch.zeros(1, 1, dtype=torch.float64),
-                                leakance_per_day=torch.tensor(self.L, dtype=torch.float64))
+        r, valid = pde_residual(
+            h,
+            dt,
+            torch.tensor(self.S, dtype=torch.float64),
+            torch.ones(1, dtype=torch.float64),
+            torch.zeros_like(h),
+            torch.zeros(1, 1, dtype=torch.float64),
+            leakance_per_day=torch.tensor(self.L, dtype=torch.float64),
+        )
         assert valid[0, 1:].all()
         assert torch.allclose(r[0, 1:], torch.zeros(4, dtype=torch.float64), atol=1e-15)
 
@@ -421,11 +443,15 @@ class TestLeakageSink:
         # one step: S (h1 - h0)/Δt + L h1 - R = 0  <=>  R = S Δh/Δt + L h1 [m/day]
         h = torch.tensor([[0.0, 1.0]], dtype=torch.float64)
         dt = torch.tensor([[10.0, 10.0]], dtype=torch.float64)
-        r, _ = pde_residual(h, dt, torch.tensor(0.05, dtype=torch.float64),
-                            torch.ones(1, dtype=torch.float64),
-                            torch.full_like(h, 0.05 * 0.1 + 1e-3),
-                            torch.zeros(1, 1, dtype=torch.float64),
-                            leakance_per_day=torch.tensor(1e-3, dtype=torch.float64))
+        r, _ = pde_residual(
+            h,
+            dt,
+            torch.tensor(0.05, dtype=torch.float64),
+            torch.ones(1, dtype=torch.float64),
+            torch.full_like(h, 0.05 * 0.1 + 1e-3),
+            torch.zeros(1, 1, dtype=torch.float64),
+            leakance_per_day=torch.tensor(1e-3, dtype=torch.float64),
+        )
         assert r[0, 1].item() == pytest.approx(0.0, abs=1e-15)
 
     def test_model_exposes_bounded_global_leakance(self, synthetic_records):
@@ -435,10 +461,14 @@ class TestLeakageSink:
         ds = ARSDataset(synthetic_records, sequence_length=16)
         batch = make_collate_fn()([ds[i] for i in range(len(ds))])
         out = ARSNet(design_feature_dim=3)(
-            design_features=batch["design_features"], displacement_cm=batch["displacement_cm"],
-            rainfall_mm=batch["rainfall_mm"], time_delta_days=batch["time_delta_days"],
-            adjacency=batch["adjacency"], incidence_angle_deg=batch["incidence_angle_deg"],
-            coherence_mask=batch["coherence_mask"])
+            design_features=batch["design_features"],
+            displacement_cm=batch["displacement_cm"],
+            rainfall_mm=batch["rainfall_mm"],
+            time_delta_days=batch["time_delta_days"],
+            adjacency=batch["adjacency"],
+            incidence_angle_deg=batch["incidence_angle_deg"],
+            coherence_mask=batch["coherence_mask"],
+        )
         assert out.leakance.dim() == 0
         assert out.leakance.item() == pytest.approx(1e-3, rel=1e-4)  # init [1/day]
         assert 1e-6 < out.leakance.item() < 1e-1
@@ -449,11 +479,17 @@ class TestLeakageSink:
         args = dict(
             predicted_displacement_cm=torch.zeros_like(h),
             observed_displacement_cm=torch.zeros_like(h),
-            predicted_head_change=h, hydraulic_conductivity=torch.ones(1),
-            recharge_rate=torch.zeros_like(h), design_recharge_capacity=torch.full((1,), 1e6),
-            rainfall_mm=torch.zeros_like(h), adjacency=torch.zeros(1, 1), time_delta_days=dt,
-            storativity=torch.tensor(self.S), recharge_area_m2=torch.ones(1),
-            catchment_area_m2=torch.ones(1))
+            predicted_head_change=h,
+            hydraulic_conductivity=torch.ones(1),
+            recharge_rate=torch.zeros_like(h),
+            design_recharge_capacity=torch.full((1,), 1e6),
+            rainfall_mm=torch.zeros_like(h),
+            adjacency=torch.zeros(1, 1),
+            time_delta_days=dt,
+            storativity=torch.tensor(self.S),
+            recharge_area_m2=torch.ones(1),
+            catchment_area_m2=torch.ones(1),
+        )
         loss_fn = CompositeARSLoss(LossWeights())
         assert loss_fn(**args).pde.item() > 1e-7  # no sink: recession unexplained
         assert loss_fn(**args, leakance=torch.tensor(self.L)).pde.item() < 1e-12

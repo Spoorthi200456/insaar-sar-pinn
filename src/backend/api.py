@@ -199,6 +199,7 @@ async def explain(structure_id: str, request: Request) -> ExplainabilityResponse
 # High-throughput WebSocket streaming
 # --------------------------------------------------------------------------- #
 
+
 class ConnectionManager:
     def __init__(self) -> None:
         self.active: set[WebSocket] = set()

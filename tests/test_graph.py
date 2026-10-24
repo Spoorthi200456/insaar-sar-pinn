@@ -39,8 +39,9 @@ def _per_structure_outputs(records, batch_size, shuffle_seed):
     torch.manual_seed(0)
     model = ARSNet(design_feature_dim=3).eval()
     torch.manual_seed(shuffle_seed)
-    loader = build_dataloader(records, batch_size=batch_size, sequence_length=12,
-                              shuffle=True, num_workers=0)
+    loader = build_dataloader(
+        records, batch_size=batch_size, sequence_length=12, shuffle=True, num_workers=0
+    )
     k, residual_rms = {}, {}
     with torch.no_grad():
         for batch in loader:
@@ -56,9 +57,14 @@ def _per_structure_outputs(records, batch_size, shuffle_seed):
             n = len(batch["structure_ids"])
             seeds = batch.get("loss_node_mask", torch.ones(n, dtype=torch.bool))
             physics_adj = batch.get("physics_adjacency", batch["adjacency"])
-            r, valid = pde_residual(out.predicted_head_change, batch["time_delta_days"],
-                                    out.storativity, out.hydraulic_conductivity,
-                                    out.recharge_rate, physics_adj)
+            r, valid = pde_residual(
+                out.predicted_head_change,
+                batch["time_delta_days"],
+                out.storativity,
+                out.hydraulic_conductivity,
+                out.recharge_rate,
+                physics_adj,
+            )
             for i, sid in enumerate(batch["structure_ids"]):
                 if seeds[i]:
                     assert sid not in k, f"{sid} was a seed twice in one epoch"
@@ -82,8 +88,9 @@ class TestPhysicsIndependentOfBatchComposition:
     def test_chain_is_actually_connected(self):
         # Guard against the test above passing trivially on an edgeless graph.
         records = _clustered_records()
-        loader = build_dataloader(records, batch_size=len(records), sequence_length=12,
-                                  shuffle=False, num_workers=0)
+        loader = build_dataloader(
+            records, batch_size=len(records), sequence_length=12, shuffle=False, num_workers=0
+        )
         batch = next(iter(loader))
         degree = (batch["physics_adjacency"] > 0).sum(dim=1)
         assert (degree >= 1).all()
@@ -92,8 +99,9 @@ class TestPhysicsIndependentOfBatchComposition:
 class TestPhysicsWeightUnits:
     def test_weight_is_inverse_distance_squared_in_m2(self):
         records = _clustered_records(n=2, spacing_km=2.0)
-        loader = build_dataloader(records, batch_size=2, sequence_length=12,
-                                  shuffle=False, num_workers=0)
+        loader = build_dataloader(
+            records, batch_size=2, sequence_length=12, shuffle=False, num_workers=0
+        )
         batch = next(iter(loader))
         lat = math.radians(13.0)
         lon = [math.radians(r.design.longitude) for r in records]
@@ -110,14 +118,23 @@ class TestPhysicsWeightUnits:
         # T*(h_j-h_i)/d through a face of width d into a cell of area d² gives
         # T*(h_j-h_i)/d² = 100 * (-1) / 4e6 = -2.5e-5 m/day for the high cell.
         records = _clustered_records(n=2, spacing_km=2.0)
-        batch = next(iter(build_dataloader(records, batch_size=2, sequence_length=12,
-                                           shuffle=False, num_workers=0)))
+        batch = next(
+            iter(
+                build_dataloader(
+                    records, batch_size=2, sequence_length=12, shuffle=False, num_workers=0
+                )
+            )
+        )
         h = torch.tensor([[0.0, 1.0], [0.0, 0.0]], dtype=torch.float64)
         dt = torch.tensor([[12.0, 12.0], [12.0, 12.0]], dtype=torch.float64)
-        r, _ = pde_residual(h, dt, torch.tensor(0.0, dtype=torch.float64),
-                            torch.full((2,), 100.0, dtype=torch.float64),
-                            torch.zeros(2, 2, dtype=torch.float64),
-                            batch["physics_adjacency"].double())
+        r, _ = pde_residual(
+            h,
+            dt,
+            torch.tensor(0.0, dtype=torch.float64),
+            torch.full((2,), 100.0, dtype=torch.float64),
+            torch.zeros(2, 2, dtype=torch.float64),
+            batch["physics_adjacency"].double(),
+        )
         # r = S dh/dt - div - R with S = 0, R = 0 -> r = -div
         assert -r[0, 1].item() == pytest.approx(-2.5e-5, rel=2e-3)
         assert -r[1, 1].item() == pytest.approx(+2.5e-5, rel=2e-3)

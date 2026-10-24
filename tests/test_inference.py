@@ -16,9 +16,9 @@ import pytest
 from src.backend.inference_engine import InferenceEngine
 from src.training.train import make_synthetic_records
 
-R_TRUE = 0.004    # m/day
-AREA = 2500.0     # m²  -> R·A = 10 m³/day
-Q_DESIGN = 40.0   # m³/day -> efficiency 0.25
+R_TRUE = 0.004  # m/day
+AREA = 2500.0  # m²  -> R·A = 10 m³/day
+Q_DESIGN = 40.0  # m³/day -> efficiency 0.25
 N_REAL, SEQ = 10, 16  # 6 padded steps
 
 
@@ -26,8 +26,9 @@ def _records():
     recs = make_synthetic_records(n_structures=2, n_timesteps=N_REAL, seed=11)
     out = []
     for r in recs:
-        design = r.design.model_copy(update={"recharge_area_m2": AREA,
-                                             "design_recharge_capacity_m3_per_day": Q_DESIGN})
+        design = r.design.model_copy(
+            update={"recharge_area_m2": AREA, "design_recharge_capacity_m3_per_day": Q_DESIGN}
+        )
         out.append(r.model_copy(update={"design": design}))
     return out
 
@@ -39,12 +40,14 @@ def engine(monkeypatch):
     def fake_run(batch):
         b, t = batch["displacement_cm"].shape
         r = np.zeros((b, t), dtype=np.float32)
-        r[:, t - N_REAL:] = R_TRUE
+        r[:, t - N_REAL :] = R_TRUE
         r[:, : t - N_REAL] = 0.7  # what an untrained softplus emits on padding
-        return {"hydraulic_conductivity": np.full(b, 12.0, dtype=np.float32),
-                "recharge_rate": r,
-                "predicted_head_change": np.zeros((b, t), dtype=np.float32),
-                "predicted_displacement_cm": np.zeros((b, t), dtype=np.float32)}
+        return {
+            "hydraulic_conductivity": np.full(b, 12.0, dtype=np.float32),
+            "recharge_rate": r,
+            "predicted_head_change": np.zeros((b, t), dtype=np.float32),
+            "predicted_displacement_cm": np.zeros((b, t), dtype=np.float32),
+        }
 
     monkeypatch.setattr(eng, "_run_torch", fake_run)
     monkeypatch.setattr(eng, "_mc_dropout_uncertainty", lambda batch, n_samples=12: None)
@@ -54,15 +57,15 @@ def engine(monkeypatch):
 def test_recharge_series_is_volume_rate_on_real_steps(engine):
     pred = engine.predict(_records())[0]
     series = np.array(pred.predicted_recharge_series_m3_per_day)
-    assert series.shape == (N_REAL,)                          # padding not reported
-    assert np.allclose(series, R_TRUE * AREA, rtol=1e-5)     # 10 m³/day
+    assert series.shape == (N_REAL,)  # padding not reported
+    assert np.allclose(series, R_TRUE * AREA, rtol=1e-5)  # 10 m³/day
 
 
 def test_efficiency_is_dimensionless_ratio_of_volume_rates(engine):
     preds = engine.predict(_records(), recharge_efficiency_threshold=0.3)
     for p in preds:
         assert p.recharge_efficiency == pytest.approx(R_TRUE * AREA / Q_DESIGN, rel=1e-5)  # 0.25
-        assert p.is_underperforming is True                   # 0.25 < 0.3
+        assert p.is_underperforming is True  # 0.25 < 0.3
         lo, hi = p.confidence_interval_m3_per_day
         assert lo <= R_TRUE * AREA <= hi
 
@@ -98,7 +101,7 @@ def test_concurrent_requests_never_predict_with_dropout_on():
         name = threading.current_thread().name
         seen.append((name, model.training))
         if name == "A" and model.training and not in_mc.is_set():
-            in_mc.set()          # A is now inside MC dropout, model in train mode
+            in_mc.set()  # A is now inside MC dropout, model in train mode
             threading.Event().wait(1.0)  # hold it there long enough for B to collide
         return real_forward(*args, **kwargs)
 

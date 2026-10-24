@@ -85,7 +85,8 @@ class InferenceEngine:
             logger.warning(
                 "No ONNX artifact or torch checkpoint found (onnx=%s, checkpoint=%s); "
                 "initializing an untrained ARSNet for interface/dev purposes only.",
-                onnx_path, torch_checkpoint_path,
+                onnx_path,
+                torch_checkpoint_path,
             )
             self._torch_model = ARSNet(design_feature_dim=design_feature_dim).eval()
             self.backend_name = "torch-untrained"
@@ -109,7 +110,9 @@ class InferenceEngine:
         self.backend_name = "onnxruntime"
         logger.info(
             "Loaded ONNX Runtime session from %s (active provider=%s, available=%s)",
-            onnx_path, self.active_provider, providers,
+            onnx_path,
+            self.active_provider,
+            providers,
         )
 
     def _load_torch(self, checkpoint_path: Path) -> None:
@@ -219,9 +222,9 @@ class InferenceEngine:
                 raw = self._run_torch(batch)
                 uncertainty = self._mc_dropout_uncertainty(batch)
 
-        design_capacity = batch["design_recharge_capacity"].numpy()       # m³/day
-        recharge_area = batch["recharge_area_m2"].numpy()                  # m²
-        real_steps = batch["valid_step_mask"].numpy()                      # (B, T) bool
+        design_capacity = batch["design_recharge_capacity"].numpy()  # m³/day
+        recharge_area = batch["recharge_area_m2"].numpy()  # m²
+        real_steps = batch["valid_step_mask"].numpy()  # (B, T) bool
         structure_ids = batch["structure_ids"]
 
         predictions: list[StructurePrediction] = []
@@ -230,15 +233,15 @@ class InferenceEngine:
             # is the volume rate R·A [m³/day] (finding 6). Only real acquisition
             # steps are reported or averaged (padding is not data).
             real = real_steps[i]
-            r_series = raw["recharge_rate"][i][real]                       # m/day
-            volume_series = r_series * recharge_area[i]                    # m³/day
-            t_value = float(raw["hydraulic_conductivity"][i])              # T [m²/day]
+            r_series = raw["recharge_rate"][i][real]  # m/day
+            volume_series = r_series * recharge_area[i]  # m³/day
+            t_value = float(raw["hydraulic_conductivity"][i])  # T [m²/day]
             mean_volume = float(np.mean(volume_series)) if volume_series.size else 0.0
             capacity = float(design_capacity[i]) if design_capacity[i] > 1e-6 else 1e-6
             efficiency = float(np.clip(mean_volume / capacity, 0.0, 5.0))  # dimensionless
 
             if uncertainty is not None:
-                std = float(uncertainty[i]) * float(recharge_area[i])      # m³/day
+                std = float(uncertainty[i]) * float(recharge_area[i])  # m³/day
             else:
                 # Temporal-variability heuristic fallback (ONNX/no-dropout path):
                 # use the recent series' own dispersion as a coarse proxy for

@@ -41,6 +41,7 @@ UNRELIABLE_FLAGS = frozenset({"out_of_bounds_clamped", "missing"})
 # Shared primitives
 # --------------------------------------------------------------------------- #
 
+
 class DataQualityFlag(str, Enum):
     OK = "ok"
     LOW_COHERENCE = "low_coherence"
@@ -71,6 +72,7 @@ class StrictModel(BaseModel):
 # ARS static design parameters (India-WRIS ARS viewer)
 # --------------------------------------------------------------------------- #
 
+
 class ARSDesignParameters(StrictModel):
     structure_id: str = Field(..., min_length=1, max_length=128)
     name: str | None = Field(default=None, max_length=256)
@@ -82,7 +84,8 @@ class ARSDesignParameters(StrictModel):
     construction_date: datetime | None = None
     design_recharge_capacity_m3_per_day: float = Field(..., gt=0.0)
     recharge_area_m2: float | None = Field(
-        default=None, gt=0.0,
+        default=None,
+        gt=0.0,
         description=(
             "Area through which the structure recharges the aquifer (water-spread / "
             "bed area) [m2]. If absent, approximated as storage_volume_m3 / height_m "
@@ -90,7 +93,9 @@ class ARSDesignParameters(StrictModel):
         ),
     )
     biot_coefficient_alpha: float = Field(
-        default=0.6, gt=0.0, le=1.0,
+        default=0.6,
+        gt=0.0,
+        le=1.0,
         description=(
             "DEPRECATED, unused by the model (review finding 2). The dimensionless Biot "
             "coefficient cannot map head [m] to displacement [cm]; the model uses a "
@@ -112,7 +117,9 @@ class ARSDesignParameters(StrictModel):
         return self.storage_volume_m3 / self.height_m
 
     @field_validator(
-        "height_m", "storage_volume_m3", "catchment_area_km2",
+        "height_m",
+        "storage_volume_m3",
+        "catchment_area_km2",
         "design_recharge_capacity_m3_per_day",
     )
     @classmethod
@@ -125,6 +132,7 @@ class ARSDesignParameters(StrictModel):
 # --------------------------------------------------------------------------- #
 # SAR / InSAR observation (per structure, per timestep)
 # --------------------------------------------------------------------------- #
+
 
 class SARObservation(StrictModel):
     structure_id: str = Field(..., min_length=1, max_length=128)
@@ -139,7 +147,9 @@ class SARObservation(StrictModel):
         ),
     )
     incidence_angle_deg: float = Field(
-        ..., ge=20.0, le=50.0,
+        ...,
+        ge=20.0,
+        le=50.0,
         description=(
             "Radar incidence angle at the structure [deg], from the Sentinel-1 product "
             "metadata (IW mode ~29-46 deg). Required: a silent default would hide "
@@ -179,6 +189,7 @@ class SARObservation(StrictModel):
 # Rainfall / meteorology observation
 # --------------------------------------------------------------------------- #
 
+
 class RainfallObservation(StrictModel):
     structure_id: str = Field(..., min_length=1, max_length=128)
     timestamp: datetime
@@ -203,6 +214,7 @@ class RainfallObservation(StrictModel):
 # Optional in-situ groundwater well measurement (boundary/initial conditions)
 # --------------------------------------------------------------------------- #
 
+
 class WellHeadObservation(StrictModel):
     structure_id: str = Field(..., min_length=1, max_length=128)
     timestamp: datetime
@@ -218,6 +230,7 @@ class WellHeadObservation(StrictModel):
 # --------------------------------------------------------------------------- #
 # Composite telemetry batch as received from ingestion (one structure)
 # --------------------------------------------------------------------------- #
+
 
 class ARSTelemetryRecord(StrictModel):
     design: ARSDesignParameters
@@ -286,6 +299,7 @@ class TelemetryBatch(StrictModel):
 # --------------------------------------------------------------------------- #
 # Inference API contracts
 # --------------------------------------------------------------------------- #
+
 
 class PredictionRequest(StrictModel):
     batch: TelemetryBatch
