@@ -1,9 +1,16 @@
 # InSAR–PINN Artificial Recharge Structure (ARS) Monitoring Platform
 
-Production implementation of the InSAR–PINN framework for monitoring the
-integrity of Artificial Recharge Structures (ARS) by fusing Sentinel-1 InSAR
-deformation measurements with a physics-informed neural network (PINN) that
-inverts a coupled poroelastic groundwater-flow PDE.
+Research prototype of an InSAR–PINN framework for monitoring Artificial
+Recharge Structures (ARS): it fuses Sentinel-1 InSAR line-of-sight
+displacement with a physics-informed neural network constrained by a
+depth-integrated groundwater-flow equation (with leakage) and an elastic
+head-to-displacement coupling.
+
+> **Status: research prototype, synthetic data only.** No real Sentinel-1,
+> rainfall or well data has been run through it, several physical constants
+> are provisional (`docs/open_questions.md`), and its outputs are **not** an
+> assessment of any real structure. See `docs/STATUS.md` and
+> `docs/REVIEW_2_SUMMARY.md` for what is and is not proven.
 
 ## Repository layout
 
@@ -62,8 +69,24 @@ Set `NEXT_PUBLIC_API_BASE_URL` and `NEXT_PUBLIC_MAPBOX_TOKEN` in
 ## Training
 
 ```bash
-python -m src.training.train --config configs/train.yaml
+# synthetic smoke run (no real data needed)
+python -m src.training.train --synthetic 24 --epochs 50
+# your own records: a JSON list of ARSTelemetryRecord objects (src/data/schemas.py)
+python -m src.training.train --data path/to/records.json --epochs 50
 ```
+
+## Reproducible demo and known-answer test (synthetic)
+
+```bash
+python scripts/demo_synthetic.py                       # loss curves -> docs/demo/
+python experiments/synthetic_recovery/run_recovery.py  # recovery report -> experiments/synthetic_recovery/
+```
+
+## Physics and maths
+
+Governing equations and units: `CLAUDE.md` → "Governing physics" and
+"Units table". Step-by-step derivations: `docs/math/`. Review findings:
+`docs/review.md`.
 
 ## Exporting for optimized inference
 
@@ -74,8 +97,8 @@ python -m src.backend.export_onnx --checkpoint checkpoints/ars_net.pt \
 
 `inference_engine.py` prefers a TensorRT execution provider when
 `onnxruntime-gpu` + TensorRT libraries are present, falls back to the
-CUDA execution provider, then to CPU — with FP16 acceleration on either
-GPU path and dynamic INT8 quantization available on CPU.
+CUDA execution provider, then to CPU. FP16 and INT8 paths exist but only the
+FP32 CPU round trip is tested (`tests/test_export_onnx.py`).
 
 ## Testing
 

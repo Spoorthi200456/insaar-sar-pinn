@@ -163,6 +163,11 @@ export default function Dashboard() {
         </div>
       </header>
 
+      <div className="border-b border-warn-500/30 bg-warn-500/10 px-5 py-1.5 text-xs text-warn-400">
+        SYNTHETIC DATA, PROVISIONAL PHYSICS. These outputs are a demonstration of the
+        pipeline, not an assessment of any real recharge structure (see docs/STATUS.md).
+      </div>
+
       {errorMessage && (
         <div className="border-b border-danger-500/30 bg-danger-500/10 px-5 py-2 text-xs text-danger-400">
           {errorMessage}
