@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -66,6 +67,26 @@ def _well_rmse(head_pred: np.ndarray, well: np.ndarray, mask: np.ndarray) -> flo
         return None
     err = head_pred[mask] - well[mask]
     return float(np.sqrt(np.mean((err - err.mean()) ** 2)))
+
+
+@contextmanager
+def mc_dropout_mode(model: torch.nn.Module):
+    """
+    Monte-Carlo dropout (Gal & Ghahramani 2016): dropout layers sample masks,
+    everything else behaves as at inference. BatchNorm stays in eval mode, so
+    it uses (and never overwrites) its running statistics - review finding 28:
+    model.train() alone made every request update them. Restores the previous
+    mode on exit.
+    """
+    was_training = model.training
+    model.train()
+    for m in model.modules():
+        if isinstance(m, torch.nn.modules.batchnorm._BatchNorm):
+            m.eval()
+    try:
+        yield model
+    finally:
+        model.train(was_training)
 
 
 class InferenceEngine:
@@ -199,28 +220,24 @@ class InferenceEngine:
         if self._torch_model is None:
             return None
         model = self._torch_model
-        model.train()  # re-enables dropout stochasticity
-        try:
-            samples = []
-            with torch.no_grad():
-                for _ in range(n_samples):
-                    out = model(
-                        design_features=batch["design_features"],
-                        displacement_cm=batch["displacement_cm"],
-                        rainfall_mm=batch["rainfall_mm"],
-                        time_delta_days=batch["time_delta_days"],
-                        adjacency=batch["adjacency"],
-                        incidence_angle_deg=batch["incidence_angle_deg"],
-                        coherence_mask=batch["coherence_mask"],
-                    )
-                    samples.append(out.recharge_rate.numpy())
-            stacked = np.stack(samples, axis=0)  # (n_samples, B, T)
-            real = batch["valid_step_mask"].numpy()
-            std = stacked.std(axis=0)  # (B, T) m/day
-            # (B,) mean over real steps
-            return (std * real).sum(axis=1) / np.maximum(real.sum(axis=1), 1)
-        finally:
-            model.eval()
+        samples = []
+        with torch.no_grad(), mc_dropout_mode(model):
+            for _ in range(n_samples):
+                out = model(
+                    design_features=batch["design_features"],
+                    displacement_cm=batch["displacement_cm"],
+                    rainfall_mm=batch["rainfall_mm"],
+                    time_delta_days=batch["time_delta_days"],
+                    adjacency=batch["adjacency"],
+                    incidence_angle_deg=batch["incidence_angle_deg"],
+                    coherence_mask=batch["coherence_mask"],
+                )
+                samples.append(out.recharge_rate.numpy())
+        stacked = np.stack(samples, axis=0)  # (n_samples, B, T)
+        real = batch["valid_step_mask"].numpy()
+        std = stacked.std(axis=0)  # (B, T) m/day
+        # (B,) mean over real steps
+        return (std * real).sum(axis=1) / np.maximum(real.sum(axis=1), 1)
 
     # ------------------------------------------------------------------ #
     def predict(

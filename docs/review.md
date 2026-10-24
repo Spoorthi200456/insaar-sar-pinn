@@ -331,7 +331,7 @@ failed before the fix; see each commit message for the before/after output.
 | 25 | `src/models/losses.py`, `train.py` | Well heads (`well_series`) never reach the loss | **Fixed** (author decision 4) |
 | 26 | `src/data/schemas.py::RainfallObservation` | Rain > 1000 mm silently clamped, no flag | **Fixed** (review 3) |
 | 27 | `src/backend/api.py` (WebSocket) | Streaming endpoint has no test (and sent binary frames) | **Fixed** (review 3) |
-| 28 | `src/models/layers.py::CVEncoder` | CV branch unused by any training, demo or test path | Open |
+| 28 | `src/models/layers.py::CVEncoder` | CV branch untested; MC dropout overwrote its BatchNorm statistics | **Fixed** (review 3; scope still the author's call) |
 | 29 | `src/models/losses.py::CompositeARSLoss` | Total loss adds (m/day)², cm² and m²: physics weight ≈ 1e-6 of data | **Fixed** |
 | 30 | `src/models/layers.py::RechargeDecoder` | Decoders forget which structure they are decoding: R identical across structures | **Fixed** |
 | 31 | `src/models/losses.py` (design-capacity hinge) | Per-step capacity ceiling vs peak recharge above an average-based capacity | **Fixed** (author decision 2) |
@@ -590,7 +590,16 @@ failed before the fix; see each commit message for the before/after output.
   `send_text`. Tests: `tests/test_api.py::TestWebSocketTelemetry` (2; before:
   both failed - each received its prediction as a binary frame).
 - **28. CV branch unused.** `CVEncoder` is not exercised by any training, demo
-  or test path. Decide whether it is in scope.
+  or test path. Decide whether it is in scope. **Fixed in review 3 (tests and a
+  defect; scope still the author's decision):** tests now exercise it (shapes,
+  gradient into the CV encoder, missing patch is an error, the patch changes
+  the prediction; these 3 passed before, a coverage gap). Defect: MC-dropout
+  uncertainty called `model.train()`, switching the CV encoder's BatchNorm to
+  batch statistics and overwriting its running averages on every request (one
+  pass moved a running mean by 0.020). New
+  `inference_engine.mc_dropout_mode`: dropout sampling with BatchNorm frozen
+  (Gal & Ghahramani 2016). Test: `tests/test_cv_branch.py::TestMCDropoutFreezesBatchNorm`
+  (before: failed).
 
 ---
 
