@@ -334,6 +334,8 @@ failed before the fix; see each commit message for the before/after output.
 | 28 | `src/models/layers.py::CVEncoder` | CV branch unused by any training, demo or test path | Open |
 | 29 | `src/models/losses.py::CompositeARSLoss` | Total loss adds (m/day)², cm² and m²: physics weight ≈ 1e-6 of data | **Fixed** |
 | 30 | `src/models/layers.py::RechargeDecoder` | Decoders forget which structure they are decoding: R identical across structures | **Fixed** |
+| 31 | `src/models/losses.py` (design-capacity hinge) | Per-step capacity ceiling vs peak recharge above an average-based capacity | Open (OQ19) |
+| 32 | `src/models/network.py` (global scalars) | S_k, S, L learn at the network's lr, too slow to cross their range | Open (diagnosed only) |
 
 ## 11. Flow equation has no sink
 
@@ -482,6 +484,32 @@ failed before the fix; see each commit message for the before/after output.
   difference had decayed to **2.7e-5** from 0.028 at the start (failed: needs
   > 10 % of the early difference). After: passed.
 - **Status:** Fixed.
+
+## 31. Per-step design-capacity ceiling vs real peak recharge (open)
+
+- **Where:** the design-capacity hinge (finding 6) is applied at every InSAR
+  interval.
+- **Found by:** known-answer run 2, scenario B (S and S_k known): median
+  relative error 0.44 > 0.30. On the simulator alone, the planted truth
+  exceeds Q_design at 21 % of working-structure steps, by up to 7.2×,
+  because capacity was sized on mean recharge.
+- **Question:** if Q_design is a seasonal or annual average, the hinge should
+  apply to the mean over a season, not to each step. If it is a hard
+  hydraulic ceiling, the simulator was unrealistic. That is a definition for
+  the author (OQ19). Not changed.
+
+## 32. Global physical scalars learn too slowly (open, diagnosed)
+
+- **Where:** S, S_k and L are single raw parameters trained at the network
+  learning rate (1e-3 in the experiment, 3e-4 in `train.py`).
+- **Found by:** known-answer run 1b. S_k's raw parameter moved 0.36 in 600
+  epochs (≈ the Σ lr limit) and needed ~2.5. The InSAR amplitude was never
+  fitted.
+- **Evidence a fix works:** diagnostic run 2 (lr 0.02 for the three scalars,
+  declared before running) fitted the data to the noise level, with ranking
+  ρ 0.95 and AUROC 1.00.
+- **Not changed in `src/`:** the change was chosen after seeing a failed
+  pre-registered test. The author decides whether `train.py` adopts it.
 
 ## 21–28. Open findings (documented, not fixed)
 

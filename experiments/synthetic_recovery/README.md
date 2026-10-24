@@ -195,3 +195,71 @@ parameter is about Σ lr_t ≈ lr × epochs / 2. Reaching either end of the rang
 
 Run with `python experiments/synthetic_recovery/run_recovery.py --protocol revised-run2`
 (writes `results_run2.*`).
+
+### Run 2 — DIAGNOSTIC (revised protocol above, commit `0d4a6a2`): still FAILS overall
+
+Files: `results_run2.csv`, `results_run2.json`. One run, same thresholds.
+
+| scenario | Spearman ρ | AUROC | median rel. err. (working) | fitted S / S_k / L (truth 0.05 / 5e-3 / 8.3e-4) | verdict |
+|---|---|---|---|---|---|
+| A, InSAR only | **0.95** | **1.00** | 0.95 | 0.0033 / 8.6e-3 / 7.1e-5 | **meets A's thresholds under a protocol revised after seeing run 1** |
+| B, S and S_k known | 0.85 | 0.92 | **0.44** | (fixed) / (fixed) / 5.3e-4 | **fails** B (needs ≤ 0.30) |
+| C, hard rock | −0.13 | 0.43 | 0.98 | — | (report only) no information, as expected |
+| D, with wells | 0.93 | 1.00 | 0.90 | 0.0050 / 5.2e-3 / 8.0e-5 | (report only) ranks perfectly; absolute R 10× off because S is 10× off |
+
+So **even under the revised protocol the pre-registered test as a whole fails**, because
+of B. The official outcome remains run 1b (failed).
+
+In A the model now fits the InSAR data to the noise level: RMSE 0.293 cm against
+0.30 cm noise, and 0.099 cm against the noise-free signal. Its ranking of the structures is
+almost perfect, and it separates every failing structure from every working one. Its
+*absolute* recharge is about 26× too small. That is exactly what the identifiability
+argument below predicts: R·S_k/S is right, but S came out 15× too small and S_k 1.7× too
+large.
+
+**Why B fails (review finding 31).** The simulator sized each structure's design
+capacity on its *mean* recharge. So during monsoon peaks the planted recharge exceeds
+the design capacity: at **21 %** of working-structure steps, by up to **7.2×** (checked on
+the simulator alone). The model's loss penalises *every step* above capacity. In A that
+penalty can be dodged by moving the free global scale. In B, S and S_k are fixed to the
+truth, so the scale is pinned and the penalty pushes the peaks down. Recovered recharge is
+compressed (spread CV 0.33 against 0.75) and biased low. Two things disagree: is the design
+capacity a per-step ceiling (the loss) or a seasonal average (the simulator)? That question
+is for the author (open question OQ19). It is not fixed here and there is no further run.
+
+## Identifiability: can InSAR alone tell S_k apart from the head change?
+
+**No, and this is exact.** InSAR measures d = 100 · cos θ · S_k · Δh. Multiply S_k by any
+factor c and divide the head change by c, and every InSAR number is unchanged. In the flow
+equation the head change is proportional to recharge, so dividing recharge by c does it.
+The model cannot tell a structure recharging 10 mm/day in a stiff aquifer from one
+recharging 1 mm/day in an aquifer ten times more compressible. A second, independent
+ambiguity: multiplying S, L, T and R all by c leaves the head unchanged, so even perfect
+wells do not give absolute recharge without knowing S.
+
+Both are verified on the simulator: the differences are 7e-16 cm and 3e-15 m
+(`tests/test_synthetic_recovery.py::TestIdentifiability`). What InSAR alone *can* give is
+R·S_k/S.
+
+**But S_k and S are one number for the whole region, so the unknown factor is the same for
+every structure.** Ranking the structures, and separating working from failing ones, does
+*not* depend on that factor. With S_k deliberately set 10× wrong, the best possible
+(oracle) estimate is 10× off in every structure but still ranks them at ρ = 0.97 (same
+test file).
+
+**So the poor ranking in run 1 was an optimiser problem, and the wrong absolute values
+are an identifiability problem:**
+
+| symptom | cause | can a better optimiser fix it? | what fixes it |
+|---|---|---|---|
+| Run 1b: ranking ρ 0.26, AUROC 0.57 (InSAR only) | **Optimiser:** S_k started 50× too small and could not move far enough, so the model never fitted the InSAR signal (finding 32) | Yes. Run 2 (faster learning rate for S_k, S, L only): ρ 0.95, AUROC 1.00 | Done in run 2 (diagnostic); `src/` unchanged |
+| Run 2: absolute recharge 26× off (InSAR only), 10× off (with wells) | **Identifiability:** only R·S_k/S (InSAR) or R/S (wells) is determined | **No.** Many different (S_k, S, R) fit the data equally well | Independent knowledge of S_k and S: pumping tests, CGWB aquifer parameters, InSAR + well co-location (Hoffmann et al. 2001) |
+| Run 2 B: relative error 0.44 with S, S_k known | **Model–experiment mismatch:** per-step capacity ceiling vs peak recharge above capacity (finding 31) | No | Decide what Q_design means (OQ19) |
+
+**What this means for the project goal.** From InSAR alone, and under the conditions
+simulated here (compliant aquifer, S_k ≈ 5e-3, signal well above noise), the model can tell
+*which structures recharge more* and *which have failed*, provided it is trained so that
+S_k can reach a realistic value. It cannot say *how much* any structure recharges, in
+mm/day or m³/day, without independent S_k and S. So the API's `recharge_efficiency`
+(R·A/Q_design) is not meaningful in absolute terms from InSAR alone. In hard rock (C) it
+cannot do either.
