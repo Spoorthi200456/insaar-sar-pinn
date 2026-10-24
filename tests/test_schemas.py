@@ -251,3 +251,21 @@ class TestIsReliableMatchesDatasetRule:
         below = self._obs(0.1, COHERENCE_THRESHOLD - 1e-6)
         assert below.is_reliable is False
         assert below.quality_flag == DataQualityFlag.LOW_COHERENCE
+
+
+class TestRainfallClampIsFlagged:
+    """Review finding 26: rain above the 1000 mm bound is clamped AND flagged, never silently."""
+
+    def test_extreme_rainfall_is_flagged(self):
+        obs = RainfallObservation(
+            structure_id="ARS-0001", timestamp=datetime.now(UTC), rainfall_mm=5000.0
+        )
+        assert obs.rainfall_mm == 1000.0
+        assert obs.quality_flag == DataQualityFlag.OUT_OF_BOUNDS_CLAMPED
+
+    def test_ordinary_rainfall_is_not_flagged(self):
+        obs = RainfallObservation(
+            structure_id="ARS-0001", timestamp=datetime.now(UTC), rainfall_mm=999.0
+        )
+        assert obs.rainfall_mm == 999.0
+        assert obs.quality_flag == DataQualityFlag.OK

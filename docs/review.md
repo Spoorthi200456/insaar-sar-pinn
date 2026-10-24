@@ -329,7 +329,7 @@ failed before the fix; see each commit message for the before/after output.
 | 23 | `src/backend/inference_engine.py::explain` | `latent_drift_score` does not measure drift | **Fixed** (review 3) |
 | 24 | `src/training/train.py` | "Best" checkpoint chosen on training loss; no validation split | **Fixed** (review 3) |
 | 25 | `src/models/losses.py`, `train.py` | Well heads (`well_series`) never reach the loss | **Fixed** (author decision 4) |
-| 26 | `src/data/schemas.py::RainfallObservation` | Rain > 1000 mm silently clamped, no flag | Open (low) |
+| 26 | `src/data/schemas.py::RainfallObservation` | Rain > 1000 mm silently clamped, no flag | **Fixed** (review 3) |
 | 27 | `src/backend/api.py` (WebSocket) | Streaming endpoint has no test | Open |
 | 28 | `src/models/layers.py::CVEncoder` | CV branch unused by any training, demo or test path | Open |
 | 29 | `src/models/losses.py::CompositeARSLoss` | Total loss adds (m/day)², cm² and m²: physics weight ≈ 1e-6 of data | **Fixed** |
@@ -580,7 +580,9 @@ failed before the fix; see each commit message for the before/after output.
   network uses wells only through training, not at prediction time.
 - **26. Silent rainfall clamp.** Rain > 1000 mm per interval is clamped to 1000
   with no quality flag. That is plausible for a single interval, but the event
-  is hidden.
+  is hidden. **Fixed in review 3:** still clamped, now flagged
+  `OUT_OF_BOUNDS_CLAMPED`. Test: `TestRainfallClampIsFlagged` (before: 1 of 2
+  failed; the other is a guard).
 - **27. WebSocket untested.** `/ws/telemetry` has no test.
 - **28. CV branch unused.** `CVEncoder` is not exercised by any training, demo
   or test path. Decide whether it is in scope.

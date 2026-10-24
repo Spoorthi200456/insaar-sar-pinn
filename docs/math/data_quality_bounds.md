@@ -51,3 +51,16 @@ be more appropriate. That is for the author once the InSAR product is chosen.
   excluded from the targets.
 - A −14 cm jump in a record that skipped validation is still excluded, because the dataset
   re-applies the rule. The old code let it through as a *trusted* −9.999 cm target.
+
+## Rainfall: clamp, but say so (finding 26)
+
+**In plain English:** a single rainfall record above 1000 mm is almost certainly an error
+(a unit mix-up or a sensor fault). The world record for one day is about 1.8 m, and records
+here are typically daily or per interval. The code has always capped such values at
+1000 mm, but did it silently, so nobody could tell that the record had been altered.
+It now also sets the record's quality flag to `OUT_OF_BOUNDS_CLAMPED`, so the event is
+visible to anyone inspecting the data.
+
+Test: `tests/test_schemas.py::TestRainfallClampIsFlagged`.
+- 5000 mm becomes 1000 mm, flagged. The old code clamped it with the flag still `ok`.
+- 999 mm is unchanged and not flagged.

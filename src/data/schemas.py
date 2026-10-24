@@ -32,7 +32,11 @@ from pydantic import (
     model_validator,
 )
 
-from src.data.preprocessing import COHERENCE_THRESHOLD, flag_interval_jumps
+from src.data.preprocessing import (
+    COHERENCE_THRESHOLD,
+    MAX_RAINFALL_MM,
+    flag_interval_jumps,
+)
 
 # Stored values that are not the true measurement (clamped to the +/-10 cm
 # bound, or missing): never reliable, whatever the coherence.
@@ -204,13 +208,17 @@ class RainfallObservation(StrictModel):
     def _tz_aware(cls, v: datetime) -> datetime:
         return _utc(v)
 
-    @field_validator("rainfall_mm")
-    @classmethod
-    def _clamp_bounds(cls, v: float) -> float:
-        # Data validation contract: R_i(t) in [0, 1000] mm per aggregation interval.
-        if v > 1000.0:
-            return 1000.0
-        return v
+    @model_validator(mode="after")
+    def _clamp_bounds(self) -> RainfallObservation:
+        # Data validation contract: rain in [0, 1000] mm per record. Values above
+        # are clamped AND flagged (review finding 26: the clamp used to be silent,
+        # hiding extreme events). docs/math/data_quality_bounds.md.
+        if not math.isfinite(self.rainfall_mm):
+            raise ValueError("rainfall_mm must be finite")
+        if self.rainfall_mm > MAX_RAINFALL_MM:
+            object.__setattr__(self, "rainfall_mm", MAX_RAINFALL_MM)
+            object.__setattr__(self, "quality_flag", DataQualityFlag.OUT_OF_BOUNDS_CLAMPED)
+        return self
 
 
 # --------------------------------------------------------------------------- #
