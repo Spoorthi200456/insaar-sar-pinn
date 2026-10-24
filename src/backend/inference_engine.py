@@ -188,7 +188,9 @@ class InferenceEngine:
                     )
                     samples.append(out.recharge_rate.numpy())
             stacked = np.stack(samples, axis=0)  # (n_samples, B, T)
-            return stacked.std(axis=0).mean(axis=1)  # (B,) mean std across time
+            real = batch["valid_step_mask"].numpy()
+            std = stacked.std(axis=0)  # (B, T) m/day
+            return (std * real).sum(axis=1) / np.maximum(real.sum(axis=1), 1)  # (B,) over real steps
         finally:
             model.eval()
 
@@ -209,34 +211,43 @@ class InferenceEngine:
             raw = self._run_torch(batch)
             uncertainty = self._mc_dropout_uncertainty(batch)
 
-        design_capacity = batch["design_recharge_capacity"].numpy()
+        design_capacity = batch["design_recharge_capacity"].numpy()       # m³/day
+        recharge_area = batch["recharge_area_m2"].numpy()                  # m²
+        real_steps = batch["valid_step_mask"].numpy()                      # (B, T) bool
         structure_ids = batch["structure_ids"]
 
         predictions: list[StructurePrediction] = []
         for i, structure_id in enumerate(structure_ids):
-            q_series = raw["recharge_rate"][i]
-            k_value = float(raw["hydraulic_conductivity"][i])
-            mean_q = float(np.mean(q_series))
+            # Review finding 12: R [m/day] is a flux; the structure's recharge
+            # is the volume rate R·A [m³/day] (finding 6). Only real acquisition
+            # steps are reported or averaged (padding is not data).
+            real = real_steps[i]
+            r_series = raw["recharge_rate"][i][real]                       # m/day
+            volume_series = r_series * recharge_area[i]                    # m³/day
+            t_value = float(raw["hydraulic_conductivity"][i])              # T [m²/day]
+            mean_volume = float(np.mean(volume_series)) if volume_series.size else 0.0
             capacity = float(design_capacity[i]) if design_capacity[i] > 1e-6 else 1e-6
-            efficiency = float(np.clip(mean_q / capacity, 0.0, 5.0))
+            efficiency = float(np.clip(mean_volume / capacity, 0.0, 5.0))  # dimensionless
 
             if uncertainty is not None:
-                std = float(uncertainty[i])
+                std = float(uncertainty[i]) * float(recharge_area[i])      # m³/day
             else:
                 # Temporal-variability heuristic fallback (ONNX/no-dropout path):
                 # use the recent series' own dispersion as a coarse proxy for
                 # predictive uncertainty, scaled to a ~90% interval half-width.
-                std = float(np.std(q_series[-8:])) if len(q_series) >= 2 else 0.0
+                recent = volume_series[-8:]
+                std = float(np.std(recent)) if recent.size >= 2 else 0.0
             half_width = 1.645 * std
-            ci = (max(0.0, mean_q - half_width), mean_q + half_width)
+            ci = (max(0.0, mean_volume - half_width), mean_volume + half_width)
 
             predictions.append(
                 StructurePrediction(
                     structure_id=structure_id,
-                    hydraulic_conductivity_m_per_day=k_value,
-                    predicted_recharge_series_m3_per_day=[float(v) for v in q_series],
+                    hydraulic_conductivity_m_per_day=t_value,
+                    transmissivity_m2_per_day=t_value,
+                    predicted_recharge_series_m3_per_day=[float(v) for v in volume_series],
                     predicted_displacement_cm=[
-                        float(v) for v in raw["predicted_displacement_cm"][i]
+                        float(v) for v in raw["predicted_displacement_cm"][i][real]
                     ],
                     recharge_efficiency=efficiency,
                     is_underperforming=efficiency < recharge_efficiency_threshold,

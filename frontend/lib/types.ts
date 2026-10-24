@@ -76,7 +76,9 @@ export interface PredictionRequest {
 
 export interface StructurePrediction {
   structure_id: string;
+  /** DEPRECATED name: holds transmissivity T [m2/day], not K. Use transmissivity_m2_per_day. */
   hydraulic_conductivity_m_per_day: number;
+  transmissivity_m2_per_day: number;
   predicted_recharge_series_m3_per_day: number[];
   predicted_displacement_cm: number[];
   recharge_efficiency: number;

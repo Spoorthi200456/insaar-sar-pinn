@@ -294,11 +294,27 @@ class PredictionRequest(StrictModel):
 
 class StructurePrediction(StrictModel):
     structure_id: str
-    hydraulic_conductivity_m_per_day: float
-    predicted_recharge_series_m3_per_day: list[float]
-    predicted_displacement_cm: list[float]
+    hydraulic_conductivity_m_per_day: float = Field(
+        ...,
+        description=(
+            "DEPRECATED name, kept for API compatibility: holds transmissivity T in "
+            "m2/day, NOT conductivity K in m/day (K = T/b needs the aquifer thickness b, "
+            "unknown, docs/open_questions.md OQ15). Use transmissivity_m2_per_day."
+        ),
+    )
+    transmissivity_m2_per_day: float = Field(..., description="Fitted transmissivity T [m2/day].")
+    predicted_recharge_series_m3_per_day: list[float] = Field(
+        ..., description="Recharge volume rate R*A [m3/day], one value per real acquisition."
+    )
+    predicted_displacement_cm: list[float] = Field(
+        ..., description="Predicted LOS displacement [cm], one value per real acquisition."
+    )
     recharge_efficiency: float = Field(
-        ..., description="mean(Q_recharge) / Q_design, clamped to [0, 5] for reporting."
+        ...,
+        description=(
+            "mean over real acquisitions of R*A [m3/day] / Q_design [m3/day] "
+            "(dimensionless), clamped to [0, 5] for reporting."
+        ),
     )
     is_underperforming: bool
     confidence_interval_m3_per_day: tuple[float, float]

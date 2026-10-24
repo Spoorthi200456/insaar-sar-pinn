@@ -315,6 +315,7 @@ failed before the fix; see each commit message for the before/after output.
 | # | Where | Short title | Status |
 |---|---|---|---|
 | 11 | `src/models/losses.py::pde_residual` | Flow equation has no sink: head can only rise | **Fixed** |
+| 12 | `src/backend/inference_engine.py::predict` | API verdict compares m/day with m³/day; padding averaged in | **Fixed** |
 
 ## 11. Flow equation has no sink
 
@@ -333,6 +334,31 @@ failed before the fix; see each commit message for the before/after output.
   residual of an exact recession was −1.4e-3 … −7.5e-4 m/day; `leakance_per_day`
   and `ARSNet.leakance` did not exist (3 failed; the composite test was added
   with the fix). After: 4 passed.
+- **Status:** Fixed.
+
+## 12. The API's working/failing verdict mixes units
+
+- **Where:** `src/backend/inference_engine.py::predict` (old lines 216-243).
+  This is the endpoint that answers the project's question:
+  `is_underperforming = recharge_efficiency < threshold`.
+- **Problem:** `recharge_efficiency = mean(R) / Q_design` divided a flux
+  [m/day] by a volume rate [m³/day]. `predicted_recharge_series_m3_per_day`
+  held R in m/day. `hydraulic_conductivity_m_per_day` held T in m²/day. The
+  mean included padded steps, where the softplus decoder emits ≈ 0.7. The
+  displacement series was reported over the padded length, so it was
+  misaligned with the observation dates the dashboard plots it against.
+- **Failure scenario:** a structure recharging exactly 25 % of its design
+  capacity (R = 0.004 m/day over 2500 m², Q_design = 40 m³/day) got efficiency
+  **0.0066**. With realistic R and Q_design, nearly every structure falls below
+  the 0.3 threshold and is reported as failing, whatever it does.
+- **Fix:** series = R·A [m³/day] on real steps only; efficiency = mean of R·A
+  over real steps / Q_design (dimensionless); CI in m³/day; new field
+  `transmissivity_m2_per_day`; the old K field is kept for compatibility and
+  documented as holding T (K = T/b needs b, OQ15); displacement series on
+  real steps only.
+- **Tests:** `tests/test_inference.py` (4). Before: 4 failed (series length 16
+  ≠ 10, efficiency 0.0066 ≠ 0.25, no transmissivity field, displacement
+  length 16 ≠ 10). After: 4 passed.
 - **Status:** Fixed.
 
 ---
