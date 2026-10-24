@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 import torch
 
 from src.data.dataset import ARSDataset, build_dataloader, make_collate_fn
@@ -123,6 +124,26 @@ class TestCollateAndDataLoader:
         n = len(samples)
         assert batch["adjacency"].shape == (n, n)
         assert torch.allclose(batch["adjacency"], batch["adjacency"].T)
+        # Review finding 18: the fixture's structures are ~50 km apart, so the
+        # matrix above is all zeros and the symmetry check passes trivially.
+        # Move two structures 1 km apart and require a real, symmetric edge.
+        moved = []
+        for i, r in enumerate(synthetic_records):
+            if i < 2:
+                lon = 77.5 + i * 1.0 / 108.3  # ~1 km per 1/108.3 deg of longitude at 13 deg N
+                r = r.model_copy(
+                    update={
+                        "design": r.design.model_copy(update={"latitude": 13.0, "longitude": lon})
+                    }
+                )
+            moved.append(r)
+        ds2 = ARSDataset(moved, sequence_length=16)
+        b2 = collate_fn([ds2[i] for i in range(len(ds2))])
+        for key in ("adjacency", "physics_adjacency"):
+            m = b2[key]
+            assert m[0, 1] > 0 and torch.equal(m[0, 1], m[1, 0]), key
+            assert torch.all(torch.diagonal(m) == 0), key
+        assert b2["physics_adjacency"][0, 1].item() == pytest.approx(1e-6, rel=0.01)  # 1/(1 km)²
 
     def test_dataloader_end_to_end(self, synthetic_records):
         loader = build_dataloader(
