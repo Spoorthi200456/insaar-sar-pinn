@@ -13,7 +13,7 @@ whether an ARS is recharging or failing?), not by file order.
 | 2 | `src/models/network.py:182` | Deformation coupling: wrong sign, wrong coefficient, no LOS projection | **Fixed** (review 2) |
 | 3 | `src/models/losses.py:123-125` | Storage term has no S_s and no ÷Δt | **Fixed** (integrator Δt still open) |
 | 4 | `src/data/dataset.py:214-228` | Physics graph built from minibatch composition | **Fixed** (review 2) |
-| 5 | `src/models/layers.py:126-135` | GAT has no self-loop — isolated nodes get zero embedding | Open |
+| 5 | `src/models/layers.py:126-135` | GAT has no self-loop — isolated nodes get zero embedding | **Fixed** (review 2) |
 | 6 | `src/models/losses.py:147-159` | Q compared against m³/day and against mm | **Fixed** (review 2) |
 | 7 | `src/models/losses.py:147-159` | Regularizers not masked — padding adds phantom recharge | Open |
 | 8 | `src/models/losses.py:131-132` | PDE loss masked by coherence; residual hard-clamped | Open |
@@ -172,7 +172,16 @@ author's approval in plan mode before any code changes.
 - **Proposed fix:** add self-loops (or a residual/skip connection) in the GAT
   layer, keep the physics adjacency (diagonal 0) separate from the GAT
   adjacency.
-- **Status:** Open.
+- **Fix (review 2):** `HydrologicGATLayer` adds a self-loop (prior weight 1)
+  to the attention support and a bias-free linear skip P·v_i:
+  v_i' = ReLU(Σ_{j∈N(i)∪{i}} α_ij W v_j + P v_i). The ReLU now acts after the
+  heads are combined. The physics adjacency is untouched (a_ii = 0, separate
+  matrix since finding 4).
+- **Tests:** `tests/test_models.py::TestIsolatedNodeKeepsOwnFeatures` (2). Before:
+  both fail. The isolated node's embedding is all zeros whatever its features,
+  and K of an isolated structure is **1.11263 before and after** a +2σ change
+  of all its design features. After: 2 passed.
+- **Status:** Fixed.
 
 ## 6. Q compared against two different units
 

@@ -75,11 +75,16 @@ class HydrologicGATLayer(nn.Module):
     connectivity a_ij, e.g. geographic proximity or shared aquifer units):
 
         e_ij   = LeakyReLU( a^T [W v_i || W v_j] )              (per head)
-        alpha_ij = softmax_j( e_ij ) masked by adjacency support a_ij > 0,
-                   and additionally scaled by the prior a_ij itself so that
-                   *known* hydraulic connectivity informs, not just gates,
-                   the learned attention.
-        v_i^{l+1} = ReLU( sum_j alpha_ij W v_j )
+        alpha_ij = softmax_j( e_ij ) over j in N(i) ∪ {i} (self-loop, a_ii = 1),
+                   then scaled by the prior a_ij so that *known* hydraulic
+                   connectivity informs, not just gates, the attention.
+        v_i^{l+1} = ReLU( sum_j alpha_ij W v_j + P v_i )         (P: linear skip)
+
+    Self-loop and skip (review finding 5): without them a node never sees its
+    own features, and an isolated node (no neighbour within the radius, the
+    common case for structures tens of km apart) gets an all-zero embedding,
+    so its design features have no effect on K or R. The self-loop exists only
+    in this attention graph; the physics adjacency keeps a_ii = 0.
 
     Multi-head outputs are averaged (final layer) or concatenated
     (intermediate layers), matching standard GAT practice.
@@ -108,6 +113,7 @@ class HydrologicGATLayer(nn.Module):
 
         self.leaky_relu = nn.LeakyReLU(leaky_relu_slope)
         self.dropout = nn.Dropout(dropout)
+        self.skip = nn.Linear(in_dim, num_heads * out_dim if concat_heads else out_dim, bias=False)
 
     def forward(self, v: torch.Tensor, adjacency: torch.Tensor) -> torch.Tensor:
         """
@@ -123,20 +129,22 @@ class HydrologicGATLayer(nn.Module):
         dst_score = torch.einsum("bhne,he->bhn", h, self.attn_dst)  # (B, H, N)
         e = self.leaky_relu(src_score.unsqueeze(-1) + dst_score.unsqueeze(-2))  # (B,H,N,N)
 
-        support = (adjacency > 0).unsqueeze(1)  # (B, 1, N, N)
+        eye = torch.eye(n, dtype=adjacency.dtype, device=adjacency.device).unsqueeze(0)
+        prior = adjacency * (1.0 - eye) + eye   # self-loop with prior weight 1
+        support = (prior > 0).unsqueeze(1)      # (B, 1, N, N); every row has its diagonal
         e = e.masked_fill(~support, float("-inf"))
 
         alpha = F.softmax(e, dim=-1)
-        alpha = torch.nan_to_num(alpha, nan=0.0)  # rows with no neighbors -> all -inf -> softmax nan
-        alpha = alpha * adjacency.unsqueeze(1)    # fold the hydraulic-connectivity prior in
+        alpha = torch.nan_to_num(alpha, nan=0.0)
+        alpha = alpha * prior.unsqueeze(1)      # fold the hydraulic-connectivity prior in
         alpha = self.dropout(alpha)
 
         out = torch.einsum("bhij,bhje->bhie", alpha, h)  # (B, H, N, out_dim)
-        out = F.relu(out)
-
         if self.concat_heads:
-            return out.permute(0, 2, 1, 3).reshape(b, n, self.num_heads * self.out_dim)
-        return out.mean(dim=1)
+            out = out.permute(0, 2, 1, 3).reshape(b, n, self.num_heads * self.out_dim)
+        else:
+            out = out.mean(dim=1)
+        return F.relu(out + self.skip(v))
 
 
 class HydrologicGATStack(nn.Module):

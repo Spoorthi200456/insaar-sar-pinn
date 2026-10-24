@@ -154,3 +154,42 @@ class TestARSNet:
         loss.backward()
         missing_grad = [name for name, p in model.named_parameters() if p.grad is None]
         assert not missing_grad, f"Parameters with no gradient: {missing_grad}"
+
+
+class TestIsolatedNodeKeepsOwnFeatures:
+    """Review finding 5: a structure with no neighbours must still use its own features."""
+
+    def test_gat_output_of_isolated_node_depends_on_its_features(self):
+        torch.manual_seed(0)
+        layer = HydrologicGATLayer(in_dim=4, out_dim=4, num_heads=2, dropout=0.0).eval()
+        adj = torch.zeros(1, 3, 3)  # nobody has a neighbour
+        v1 = torch.randn(1, 3, 4)
+        v2 = v1.clone()
+        v2[0, 1] += 1.0  # change only node 1's features
+        out1, out2 = layer(v1, adj), layer(v2, adj)
+        assert not torch.allclose(out1[0, 1], out2[0, 1])   # node 1 sees its own change
+        assert torch.allclose(out1[0, 0], out2[0, 0])       # isolated others do not
+        assert out1[0, 1].abs().sum() > 0                   # embedding is not all-zero
+
+    def test_design_features_change_k_of_isolated_structure(self, synthetic_records):
+        batch = _batch_from_records(synthetic_records, sequence_length=16)
+        assert (batch["adjacency"] == 0).all()  # synthetic structures are ~50 km apart
+        torch.manual_seed(0)
+        model = ARSNet(design_feature_dim=3).eval()
+
+        def k_of(design):
+            with torch.no_grad():
+                return model(
+                    design_features=design,
+                    displacement_cm=batch["displacement_cm"],
+                    rainfall_mm=batch["rainfall_mm"],
+                    time_delta_days=batch["time_delta_days"],
+                    adjacency=batch["adjacency"],
+                    incidence_angle_deg=batch["incidence_angle_deg"],
+                    coherence_mask=batch["coherence_mask"],
+                ).hydraulic_conductivity
+
+        design = batch["design_features"].clone()
+        changed = design.clone()
+        changed[0] += 2.0  # e.g. a much taller dam with a larger catchment
+        assert abs(k_of(design)[0].item() - k_of(changed)[0].item()) > 1e-6
