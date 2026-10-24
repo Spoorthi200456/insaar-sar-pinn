@@ -71,6 +71,7 @@ textbook result each step relies on. Never skip steps.
 | structure spacing | d_ij | m (haversine) | preprocessing.py |
 | leakance (`ARSNet.leakance`) | L = K′/b′ | 1/day, global, (1e-6, 1e-1), init 1e-3 (provisional, OQ13) | network.py |
 | time step | Δt | days (0 on padded steps) | dataset.py |
+| loss scales (`DISPLACEMENT_SCALE_CM`, `RESIDUAL_SCALE_M_PER_DAY`, `HEAD_SCALE_M`) | σ_d, σ_r, σ_h | cm, m/day, m; 0.3, 1e-4, 0.1 (provisional, OQ18); total loss is dimensionless (finding 29) | losses.py |
 
 ## Hard rules
 1. Never change a PDE term, loss term, sign, or unit without first writing the

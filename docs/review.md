@@ -332,6 +332,7 @@ failed before the fix; see each commit message for the before/after output.
 | 26 | `src/data/schemas.py::RainfallObservation` | Rain > 1000 mm silently clamped, no flag | Open (low) |
 | 27 | `src/backend/api.py` (WebSocket) | Streaming endpoint has no test | Open |
 | 28 | `src/models/layers.py::CVEncoder` | CV branch unused by any training, demo or test path | Open |
+| 29 | `src/models/losses.py::CompositeARSLoss` | Total loss adds (m/day)², cm² and m²: physics weight ≈ 1e-6 of data | **Fixed** |
 
 ## 11. Flow equation has no sink
 
@@ -441,6 +442,24 @@ failed before the fix; see each commit message for the before/after output.
   can reach any value. PROVISIONAL scale (OQ16).
 - **Test:** `tests/test_models.py::TestRechargeOutputScale`. Before: mean R at
   init **0.709 m/day** (failed; bound 0.1–50 mm/day). After: passed.
+- **Status:** Fixed.
+
+## 29. The total loss adds terms with different units
+
+- **Where:** `CompositeARSLoss.forward`, `total = w.pde·L_pde + w.data·L_data + …`.
+- **Problem:** L_pde is in (m/day)², L_data in cm², L_BC in m². That is
+  hard rule 2. A 1 mm/day flow-equation error costs 1e-6; a 0.3 cm misfit
+  costs 0.09. The physics term was ~1e-6 of the data term, so the model was a
+  PINN in name only. The value of `total` also changed 100× if displacement
+  was expressed in mm instead of cm.
+- **Fix:** each physical term is divided by a stated scale squared (σ_r =
+  1e-4 m/day, σ_d = 0.3 cm, σ_h = 0.1 m; Gaussian likelihood form), fixed
+  *before* the known-answer experiment. See `docs/math/loss_scaling.md`, OQ18.
+  Breakdown terms remain in physical units.
+- **Tests:** `tests/test_losses.py::TestTotalLossIsDimensionless` (2). Before:
+  TypeError (no scale arguments). Behavioural: the same data gave total
+  **1.75** in cm and **175** in mm, with the PDE term 6.1e-7 against a data term
+  of 1.75. After: 2 passed.
 - **Status:** Fixed.
 
 ## 21–28. Open findings (documented, not fixed)

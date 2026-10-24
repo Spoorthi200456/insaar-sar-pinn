@@ -13,6 +13,7 @@ marked "check against your edition".
 | [masking.md](masking.md) | Which time steps each loss term uses; no hard clamp | 8, 7 |
 | [head_integrator.md](head_integrator.md) | Head from head rate with the real Δt | 3 (note) |
 | [flow_equation_leakage.md](flow_equation_leakage.md) | Hantush leakage sink in the flow equation | 11 |
+| [loss_scaling.md](loss_scaling.md) | Dimensionless total loss (σ_d, σ_r, σ_h) | 29 |
 
 The governing equations used by the code are summarised in `CLAUDE.md` →
 "Governing physics"; these notes are the full derivations behind it.

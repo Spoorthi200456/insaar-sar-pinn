@@ -493,3 +493,56 @@ class TestLeakageSink:
         loss_fn = CompositeARSLoss(LossWeights())
         assert loss_fn(**args).pde.item() > 1e-7  # no sink: recession unexplained
         assert loss_fn(**args, leakance=torch.tensor(self.L)).pde.item() < 1e-12
+
+
+class TestTotalLossIsDimensionless:
+    """
+    Review finding 29 (CLAUDE.md hard rule 2). `total` used to add the PDE term
+    [(m/day)²], the data misfit [cm²] and the boundary term [m²] directly. Each
+    is now divided by a stated characteristic scale squared (σ_r [m/day],
+    σ_d [cm], σ_h [m]), so total is dimensionless and does not depend on the
+    unit a quantity is expressed in. Breakdown terms stay in physical units.
+    """
+
+    def _args(self, scale_disp=1.0):
+        torch.manual_seed(0)
+        b, t = 3, 6
+        return dict(
+            predicted_displacement_cm=torch.randn(b, t) * scale_disp,
+            observed_displacement_cm=torch.randn(b, t) * scale_disp,
+            predicted_head_change=torch.randn(b, t) * 0.1,
+            hydraulic_conductivity=torch.rand(b) + 0.1,
+            recharge_rate=torch.rand(b, t) * 1e-3,
+            design_recharge_capacity=torch.full((b,), 1e6),
+            rainfall_mm=torch.full((b, t), 1e3),
+            adjacency=torch.zeros(b, b),
+            time_delta_days=torch.full((b, t), 12.0),
+            storativity=torch.tensor(0.05),
+            recharge_area_m2=torch.ones(b),
+            catchment_area_m2=torch.ones(b),
+        )
+
+    def test_total_independent_of_displacement_unit(self):
+        in_cm = CompositeARSLoss(LossWeights(), displacement_scale_cm=0.3)
+        in_mm = CompositeARSLoss(LossWeights(), displacement_scale_cm=3.0)  # same σ, in mm
+        t_cm = in_cm(**self._args(1.0)).total.item()
+        t_mm = in_mm(**self._args(10.0)).total.item()  # same data expressed in mm
+        assert t_mm == pytest.approx(t_cm, rel=1e-5)
+
+    def test_residual_of_one_sigma_costs_one_weight(self):
+        sigma_r = 1e-4
+        w = LossWeights(
+            pde=1.0,
+            data=0,
+            boundary=0,
+            design_capacity=0,
+            non_negativity=0,
+            mass_balance=0,
+            conductivity_smoothness=0,
+        )
+        args = self._args()
+        args["predicted_head_change"] = torch.zeros(3, 6)
+        args["recharge_rate"] = torch.full((3, 6), sigma_r)  # r = -R = -σ_r at every valid step
+        out = CompositeARSLoss(w, residual_scale_m_per_day=sigma_r)(**args)
+        assert out.pde.item() == pytest.approx(sigma_r**2, rel=1e-4)  # breakdown in (m/day)²
+        assert out.total.item() == pytest.approx(1.0, rel=1e-4)  # total dimensionless

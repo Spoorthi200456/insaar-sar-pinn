@@ -29,6 +29,13 @@ MM_PER_M = 1000.0
 # area, so a dry series (no inflow) still gives a finite, dimensionless ratio.
 _MASS_BALANCE_FLOOR_M = 1e-3
 
+# Characteristic scales for the dimensionless total loss (review finding 29,
+# PROVISIONAL, docs/open_questions.md OQ18). Each squared physical term is
+# divided by its scale squared, so one scale of error costs one unit of weight.
+DISPLACEMENT_SCALE_CM = 0.3  # σ_d: typical Sentinel-1 per-epoch LOS noise [cm]
+RESIDUAL_SCALE_M_PER_DAY = 1e-4  # σ_r: tolerated flow-equation error, 0.1 mm/day [m/day]
+HEAD_SCALE_M = 0.1  # σ_h: well-head observation uncertainty [m]
+
 
 def _masked_mse(
     pred: torch.Tensor, target: torch.Tensor, mask: torch.Tensor | None
@@ -163,11 +170,20 @@ class CompositeARSLoss(nn.Module):
     """
 
     def __init__(
-        self, weights: LossWeights | None = None, runoff_coefficient: float = RUNOFF_COEFFICIENT
+        self,
+        weights: LossWeights | None = None,
+        runoff_coefficient: float = RUNOFF_COEFFICIENT,
+        displacement_scale_cm: float = DISPLACEMENT_SCALE_CM,
+        residual_scale_m_per_day: float = RESIDUAL_SCALE_M_PER_DAY,
+        head_scale_m: float = HEAD_SCALE_M,
     ) -> None:
         super().__init__()
         self.weights = weights or LossWeights()
         self.runoff_coefficient = runoff_coefficient
+        # Characteristic scales that make `total` dimensionless (finding 29).
+        self.displacement_scale_cm = displacement_scale_cm
+        self.residual_scale_m_per_day = residual_scale_m_per_day
+        self.head_scale_m = head_scale_m
 
     def forward(
         self,
@@ -282,10 +298,14 @@ class CompositeARSLoss(nn.Module):
         edges = (adjacency > 0).float() * node_f.unsqueeze(-1)
         smoothness_loss = (edges * log_diff_sq).sum() / edges.sum().clamp_min(1.0)
 
+        # Review finding 29 (hard rule 2): the PDE [(m/day)²], data [cm²] and
+        # boundary [m²] terms are divided by their characteristic scale squared
+        # before being added, so `total` is dimensionless. The regularizers are
+        # already dimensionless. Breakdown terms stay in physical units.
         total = (
-            w.pde * pde_loss
-            + w.data * data_loss
-            + w.boundary * boundary_loss
+            w.pde * pde_loss / self.residual_scale_m_per_day**2
+            + w.data * data_loss / self.displacement_scale_cm**2
+            + w.boundary * boundary_loss / self.head_scale_m**2
             + w.design_capacity * design_capacity_loss
             + w.non_negativity * non_negativity_loss
             + w.mass_balance * mass_balance_loss
