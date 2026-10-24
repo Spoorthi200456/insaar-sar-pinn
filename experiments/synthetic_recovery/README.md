@@ -81,9 +81,24 @@ thresholds are not moved.
 
 ## Results
 
-### Run 1 (code at commit `9742130`, first run after pre-registration): **FAILED**
+### Official pre-registered outcome: **FAILED**
 
-Files: `results_run1.csv` (per structure), `results_run1.json`. The run is
+Under the pre-registered protocol and thresholds, the model **fails** scenario A. It
+cannot recover the ranking of recharge, or separate working from failing structures,
+from InSAR alone.
+
+- InSAR only: ρ = 0.26, AUROC = 0.57.
+- With well heads: ρ = 0.95, AUROC = 1.00.
+
+Run 1b below is the official result (the author's decision). Run 1a is the very first run.
+Both used the same pre-registered protocol and thresholds. They differ only by the
+finding-30 decoder bug fix, which was itself made *after* seeing run 1a. It has its own
+failing-then-passing unit test, but it is still a change made after a failure, and it is
+reported as such.
+
+### Run 1a (pre-registered protocol; code at `9742130`, before the finding-30 fix): FAILED
+
+Files: `results_run1a.csv` (per structure), `results_run1a.json`. The run is
 deterministic: a second run gave identical numbers.
 
 | scenario | Spearman ρ | AUROC | median rel. err. (working) | fitted S / S_k / L | verdict |
@@ -115,9 +130,9 @@ through, and recovery worked.
 This is recorded as review finding 30 and fixed in the next commit, with its own failing
 test. The pre-registered thresholds are **not changed**.
 
-### Run 2 (after the finding-30 decoder fix, commit `a249eae`; thresholds unchanged): **FAILED**
+### Run 1b — OFFICIAL (pre-registered protocol; after the finding-30 decoder fix, `a249eae`): **FAILED**
 
-Files: `results_run2.csv`, `results_run2.json`.
+Files: `results_run1b.csv`, `results_run1b.json`.
 
 | scenario | Spearman ρ | AUROC | median rel. err. (working) | R spread across structures (CV; truth 0.75) | verdict |
 |---|---|---|---|---|---|
@@ -126,7 +141,7 @@ Files: `results_run2.csv`, `results_run2.json`.
 | C, hard rock | 0.03 | 0.47 | 0.98 | 0.00002 | (report only) no information, as expected |
 | D, with wells | **0.95** | **1.00** | **0.19** | 0.69 | (report only) recovers |
 
-**Why A still fails.**
+**Why A fails.**
 
 1. **The fitted S_k is 2.3e-4 against a true 5e-3**, and the fitted head is 2 % of the
    true head. The model never fits the displacement signal: RMSE 0.55 cm against
