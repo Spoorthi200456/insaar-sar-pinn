@@ -375,6 +375,7 @@ class InferenceEngine:
                 out.recharge_rate,
                 batch["physics_adjacency"],
                 out.leakance,
+                batch["valid_step_mask"],
             )
             pde_residual_norm = float(torch.norm(residual[idx][valid[idx]]).item())
 

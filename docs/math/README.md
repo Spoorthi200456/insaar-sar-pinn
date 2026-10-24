@@ -16,6 +16,7 @@ marked "check against your edition".
 | [loss_scaling.md](loss_scaling.md) | Dimensionless total loss (σ_d, σ_r, σ_h) | 29 |
 | [validation_split.md](validation_split.md) | Train / validation / test split by structure group | 24 |
 | [data_quality_bounds.md](data_quality_bounds.md) | Per-interval displacement bound; flagged rainfall clamp | 21, 26 |
+| [time_intervals.md](time_intervals.md) | The first acquisition has no interval (Δt₀ = 0) | 22 |
 
 The governing equations used by the code are summarised in `CLAUDE.md` →
 "Governing physics"; these notes are the full derivations behind it.

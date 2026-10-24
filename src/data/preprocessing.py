@@ -107,15 +107,15 @@ def clamp_rainfall(values_mm: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 def time_deltas_days(timestamps_epoch_s: np.ndarray) -> np.ndarray:
     """
     Convert a monotonically increasing sequence of unix timestamps (seconds)
-    into per-step time gaps (days), with the first step's delta set equal to
-    the second (no lookbehind available at t=0).
+    into per-step time gaps (days). The first acquisition has no preceding
+    interval, so its delta is 0 (review finding 22: it used to be a copy of the
+    second gap). Δt_k > 0 therefore means "there is an interval (t_{k-1}, t_k]
+    between two real acquisitions"; docs/math/time_intervals.md.
     """
     ts = np.asarray(timestamps_epoch_s, dtype=np.float64)
     if len(ts) < 2:
         return np.zeros_like(ts)
-    deltas = np.diff(ts) / 86400.0
-    deltas = np.concatenate([[deltas[0]], deltas])
-    return deltas
+    return np.concatenate([[0.0], np.diff(ts) / 86400.0])
 
 
 def aggregate_rainfall_to_insar_cadence(

@@ -55,7 +55,7 @@ class Simulation:
     lat: np.ndarray  # (N,) deg
     lon: np.ndarray  # (N,) deg
     t_days: np.ndarray  # (K,) acquisition times since start [day]
-    dt_days: np.ndarray  # (K,) dt_k, dt_0 = dt_1 (as the dataset does)
+    dt_days: np.ndarray  # (K,) dt_k, dt_0 = 0 (no interval before the first; as the dataset)
     rain_days: np.ndarray  # (D,) time of each daily rain record [day]
     rain_mm: np.ndarray  # (D,) daily rain [mm]
     rain_per_step_mm: np.ndarray  # (K,) P_k [mm], causal (t_{k-1}, t_k]
@@ -147,7 +147,7 @@ def simulate(cfg: TruthConfig = TruthConfig()) -> Simulation:
     # --- acquisitions with irregular revisit, daily rain after t0
     gaps = rng.choice(cfg.revisit_days, size=k - 1, p=cfg.revisit_probs)
     t = np.concatenate([[0.0], np.cumsum(gaps)])
-    dt = np.concatenate([[gaps[0]], gaps])
+    dt = np.concatenate([[0.0], gaps])  # first acquisition: no interval (as the dataset)
     n_days = int(t[-1]) + 1
     rain_days = np.arange(n_days) + 0.5  # noon of each day after t0
     rain_mm = _daily_rain(rng, n_days)
@@ -162,8 +162,8 @@ def simulate(cfg: TruthConfig = TruthConfig()) -> Simulation:
     transmissivity = np.exp(rng.uniform(np.log(20.0), np.log(200.0), n))
     theta = rng.uniform(29.0, 46.0, n)
 
-    recharge = eta[:, None] * p_step[None, :] / 1000.0 / dt[None, :]
-    recharge[:, 0] = 0.0
+    recharge = np.zeros((n, k))
+    recharge[:, 1:] = eta[:, None] * p_step[None, 1:] / 1000.0 / dt[None, 1:]
     g = lateral_operator(a, transmissivity)
     head = integrate_head(cfg, recharge, dt, g)
     d_clean = los_cm(head, cfg.skeletal_storage, theta)
@@ -218,9 +218,8 @@ def oracle_eta(sim: Simulation) -> np.ndarray:
     cfg = sim.cfg
     n, k = sim.recharge.shape
     g = lateral_operator(sim.a_ij, sim.transmissivity)
-    unit_r = sim.rain_per_step_mm[None, :] / 1000.0 / sim.dt_days[None, :]
-    unit_r = np.repeat(unit_r, n, axis=0)
-    unit_r[:, 0] = 0.0
+    unit_r = np.zeros((n, k))
+    unit_r[:, 1:] = sim.rain_per_step_mm[None, 1:] / 1000.0 / sim.dt_days[None, 1:]
     cols = []
     for j in range(n):
         r = np.zeros((n, k))

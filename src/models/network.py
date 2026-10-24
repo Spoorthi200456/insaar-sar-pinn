@@ -71,8 +71,9 @@ class HeadChangeIntegrator(nn.Module):
     Explicit time integration with the REAL time gap (review-2 fix of the
     integrator that ignored Δt):
 
-        h_k = h_{k-1} + Δt_k · v_k     for k with steps k and k-1 both real
-        increment = 0                  at padding (Δt = 0) and the first real step
+        h_k = h_{k-1} + Δt_k · v_k     for k >= 1 with Δt_k > 0 (an interval exists)
+        increment = 0                  at padding and at the first real acquisition,
+                                       both of which have Δt = 0 (finding 22)
 
     so h = 0 at the first real acquisition, and the backward difference
     (h_k − h_{k-1})/Δt_k used by the PDE residual equals v_k exactly.
@@ -86,8 +87,8 @@ class HeadChangeIntegrator(nn.Module):
         returns:         (B, T) h − h(first real acquisition) [m]
         """
         dt = time_delta_days
-        real = dt > 0
-        step = torch.cat([torch.zeros_like(real[:, :1]), real[:, 1:] & real[:, :-1]], dim=1)
+        has_interval = dt > 0
+        step = torch.cat([torch.zeros_like(has_interval[:, :1]), has_interval[:, 1:]], dim=1)
         increment = torch.where(step, dt * head_rate, torch.zeros_like(head_rate))
         return torch.cumsum(increment, dim=1)
 
@@ -216,12 +217,10 @@ class ARSNet(nn.Module):
         v = HEAD_RATE_SCALE_M_PER_DAY * self.head_rate_decoder(u, rainfall_mm)  # (B, T) m/day
         delta_h = self.head_integrator(v, time_delta_days)  # (B, T) m
 
-        # Reference head at the first real acquisition (first step with Δt > 0;
-        # padded steps have Δt = 0). Index 0 if a row has no real step.
-        first_real = (time_delta_days > 0).int().argmax(dim=1, keepdim=True)  # (B, 1)
-        h_ref = torch.gather(delta_h, 1, first_real)
+        # h is already 0 at the first real acquisition (the InSAR reference date):
+        # the integrator adds nothing before the first interval (finding 22).
         s_k = self.skeletal_storage()
-        d_pred = head_to_los_cm(delta_h - h_ref, s_k, incidence_angle_deg)  # (B, T) [cm]
+        d_pred = head_to_los_cm(delta_h, s_k, incidence_angle_deg)  # (B, T) [cm]
 
         return ARSNetOutput(
             hydraulic_conductivity=k,

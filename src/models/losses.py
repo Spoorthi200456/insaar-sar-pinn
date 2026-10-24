@@ -89,6 +89,7 @@ def pde_residual(
     recharge_m_per_day: torch.Tensor,
     adjacency: torch.Tensor,
     leakance_per_day: torch.Tensor | float = 0.0,
+    real_mask: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Residual of the depth-integrated flow equation with Hantush leakage
@@ -107,15 +108,20 @@ def pde_residual(
                         drainage to the regional aquifer. 0 = no sink (old
                         equation); ARSNet always supplies its learned L.
 
-    ∂h/∂t uses the backward difference (h_k − h_{k−1}) / Δt_k, which is only
-    defined when both k and k−1 are real acquisitions (Δt > 0). Step 0, padded
-    steps and the first real step after padding are returned as invalid.
+    real_mask:          (B, T) bool, True on real acquisitions (incl. the first,
+                        whose Δt is 0). If None, real = (Δt > 0) (legacy callers).
+
+    ∂h/∂t uses the backward difference (h_k − h_{k−1}) / Δt_k, defined only
+    when steps k and k−1 are both real and Δt_k > 0 (finding 22: the first
+    acquisition has Δt = 0 and no preceding interval). Step 0, padding and any
+    step whose predecessor is not real are returned as invalid.
 
     returns: (residual (B, T), valid (B, T) bool)
     """
     dt = time_delta_days
+    real = (dt > 0) if real_mask is None else real_mask.bool()
     valid = torch.zeros_like(head_m, dtype=torch.bool)
-    valid[:, 1:] = (dt[:, 1:] > 0) & (dt[:, :-1] > 0)
+    valid[:, 1:] = (dt[:, 1:] > 0) & real[:, 1:] & real[:, :-1]
     dt_safe = torch.where(valid, dt, torch.ones_like(dt))  # never divide by 0, even where masked
 
     dh_dt = torch.zeros_like(head_m)
@@ -248,6 +254,7 @@ class CompositeARSLoss(nn.Module):
             recharge_rate,
             adjacency,
             leakance,
+            valid_mask,
         )
         # Review finding 8: physics applies at every real step of a seed node,
         # including low-coherence / interpolated InSAR steps (where it is the
@@ -319,7 +326,11 @@ class CompositeARSLoss(nn.Module):
         # (direct rain on the footprint + runoff from the catchment).
         recharge_volume = (volume_rate * time_delta_days * valid_f).sum(dim=1)  # (B,) m³
         contributing_area = recharge_area_m2 + self.runoff_coefficient * catchment_area_m2
-        rain_m = (rainfall_mm * valid_f).sum(dim=1) / MM_PER_M
+        # Only rain inside a monitored interval (Δt_k > 0) can be inflow: the
+        # reference step's bin holds all rain BEFORE the first acquisition
+        # (finding 22).
+        has_interval = valid_f * (time_delta_days > 0).float()
+        rain_m = (rainfall_mm * has_interval).sum(dim=1) / MM_PER_M
         inflow_volume = rain_m * contributing_area  # (B,) m³
         volume_scale = inflow_volume + _MASS_BALANCE_FLOOR_M * recharge_area_m2
         mass_balance_per_node = (

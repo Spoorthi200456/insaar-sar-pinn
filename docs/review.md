@@ -325,7 +325,7 @@ failed before the fix; see each commit message for the before/after output.
 | 19 | `frontend/components/Dashboard.tsx` | Dashboard presents synthetic, provisional outputs without a warning | **Fixed** (build verified) |
 | 20 | `src/models/network.py` (recharge decoder) | R starts at ~0.7 m/day (700 mm/day): not non-dimensionalised | **Fixed** |
 | 21 | `src/data/schemas.py::SARObservation` | ±10 cm bound applied to *cumulative* displacement | **Fixed** (review 3) |
-| 22 | `src/data/preprocessing.py::time_deltas_days` | Δt at step 0 is fabricated (copied from step 1) | Open (low) |
+| 22 | `src/data/preprocessing.py::time_deltas_days` | Δt at step 0 is fabricated (copied from step 1) | **Fixed** (review 3) |
 | 23 | `src/backend/inference_engine.py::explain` | `latent_drift_score` does not measure drift | Open |
 | 24 | `src/training/train.py` | "Best" checkpoint chosen on training loss; no validation split | **Fixed** (review 3) |
 | 25 | `src/models/losses.py`, `train.py` | Well heads (`well_series`) never reach the loss | **Fixed** (author decision 4) |
@@ -545,7 +545,12 @@ failed before the fix; see each commit message for the before/after output.
 - **22. Fabricated Δt₀.** `time_deltas_days` sets Δt₀ = Δt₁ (no
   look-behind). Δt₀ feeds the transformer's positional encoding and makes
   step 0 count as "real" for `valid_mask`. The PDE term never uses step 0. Low
-  impact; left as is.
+  impact; left as is. **Fixed in review 3, and not as low-impact as thought:**
+  step 0's rain bin holds ALL rain before the first acquisition, and it
+  counted as mass-balance inflow. Now Δt_0 = 0 and "Δt_k > 0" means an
+  interval exists; integrator, PDE validity (explicit `real_mask`), inflow
+  and positional encoding follow it. See `docs/math/time_intervals.md`.
+  Tests: `tests/test_time_intervals.py` (5; before: 4 failed, 1 guard passed).
 - **23. `latent_drift_score`** is ‖e − mean(e)‖ over the components of one
   node embedding: a spread, not a drift against any reference. It should be
   renamed or redefined against a training-time reference. It is an API field,

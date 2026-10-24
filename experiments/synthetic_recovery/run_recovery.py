@@ -28,7 +28,7 @@ import random
 import sys
 import time
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -88,7 +88,7 @@ WELL_DATUM_OFFSET_M = 87.3  # wells report absolute head; the model must remove 
 GLOBAL_SCALAR_LR = 0.02
 GLOBAL_SCALARS = ("storativity_logit", "skeletal_storage_raw", "leakance_raw")
 
-T0 = datetime(2024, 1, 1, tzinfo=timezone.utc)
+T0 = datetime(2024, 1, 1, tzinfo=UTC)
 
 
 @dataclass
