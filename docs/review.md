@@ -324,7 +324,7 @@ failed before the fix; see each commit message for the before/after output.
 | 18 | `tests/test_dataset.py` | Collate adjacency test passes trivially on an all-zero matrix | **Fixed** (test strengthened) |
 | 19 | `frontend/components/Dashboard.tsx` | Dashboard presents synthetic, provisional outputs without a warning | **Fixed** (build verified) |
 | 20 | `src/models/network.py` (recharge decoder) | R starts at ~0.7 m/day (700 mm/day): not non-dimensionalised | **Fixed** |
-| 21 | `src/data/schemas.py::SARObservation` | ±10 cm bound applied to *cumulative* displacement | Open (OQ17) |
+| 21 | `src/data/schemas.py::SARObservation` | ±10 cm bound applied to *cumulative* displacement | **Fixed** (review 3) |
 | 22 | `src/data/preprocessing.py::time_deltas_days` | Δt at step 0 is fabricated (copied from step 1) | Open (low) |
 | 23 | `src/backend/inference_engine.py::explain` | `latent_drift_score` does not measure drift | Open |
 | 24 | `src/training/train.py` | "Best" checkpoint chosen on training loss; no validation split | **Fixed** (review 3) |
@@ -535,7 +535,13 @@ failed before the fix; see each commit message for the before/after output.
   several cm per year (tens of cm over a multi-year series), so the later part
   of a long series would be silently discarded. That is the period that
   shows whether a structure is working. The bound should probably apply
-  to per-interval change. **Not fixed:** this changes the data contract (OQ17).
+  to per-interval change. **Fixed in review 3:** the bound now applies to the
+  change since the last accepted acquisition; jumps are flagged
+  `STEP_OUT_OF_BOUNDS` and kept, not clamped; the dataset re-applies the rule.
+  See `docs/math/data_quality_bounds.md`. Tests:
+  `tests/test_displacement_bounds.py` (3; before: 3 failed). Three existing
+  tests asserted the cumulative clamp itself and were rewritten to the
+  per-interval rule with the same protective guarantee (listed in the commit).
 - **22. Fabricated Δt₀.** `time_deltas_days` sets Δt₀ = Δt₁ (no
   look-behind). Δt₀ feeds the transformer's positional encoding and makes
   step 0 count as "real" for `valid_mask`. The PDE term never uses step 0. Low

@@ -8,6 +8,7 @@ export type DataQualityFlag =
   | "missing"
   | "interpolated"
   | "out_of_bounds_clamped"
+  | "step_out_of_bounds"
   | "anomaly_no_rainfall";
 
 export interface ARSDesignParameters {

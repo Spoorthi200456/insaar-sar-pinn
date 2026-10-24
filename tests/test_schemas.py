@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -51,16 +51,42 @@ class TestARSDesignParameters:
 
 
 class TestSARObservation:
-    def test_clamps_out_of_bounds_displacement(self):
-        obs = SARObservation(
+    def test_flags_out_of_bounds_interval_change(self):
+        # Review finding 21: was test_clamps_out_of_bounds_displacement, which
+        # asserted the cumulative +/-10 cm clamp (the bug). The bound now applies
+        # to the change between acquisitions: a 15 cm jump is flagged (and kept,
+        # not clamped); a 15 cm cumulative value on its own is legitimate.
+        t0 = datetime(2024, 1, 1, tzinfo=UTC)
+        single = SARObservation(
             structure_id="ARS-0001",
-            timestamp=datetime.now(UTC),
+            timestamp=t0,
             los_displacement_cm=15.0,
             coherence=0.9,
             incidence_angle_deg=35.0,
         )
-        assert abs(obs.los_displacement_cm) < 10.0
-        assert obs.quality_flag == DataQualityFlag.OUT_OF_BOUNDS_CLAMPED
+        assert single.los_displacement_cm == 15.0
+        assert single.quality_flag == DataQualityFlag.OK
+        sar = [
+            SARObservation(
+                structure_id="ARS-0001",
+                timestamp=t0,
+                los_displacement_cm=0.1,
+                coherence=0.9,
+                incidence_angle_deg=35.0,
+            ),
+            SARObservation(
+                structure_id="ARS-0001",
+                timestamp=t0 + timedelta(days=12),
+                los_displacement_cm=15.1,
+                coherence=0.9,
+                incidence_angle_deg=35.0,
+            ),
+        ]
+        rain = [RainfallObservation(structure_id="ARS-0001", timestamp=t0, rainfall_mm=1.0)]
+        rec = ARSTelemetryRecord(design=_design(), sar_series=sar, rainfall_series=rain)
+        assert rec.sar_series[1].quality_flag == DataQualityFlag.STEP_OUT_OF_BOUNDS
+        assert rec.sar_series[1].los_displacement_cm == 15.1
+        assert rec.sar_series[1].is_reliable is False
 
     def test_flags_low_coherence(self):
         obs = SARObservation(
@@ -188,9 +214,23 @@ class TestIsReliableMatchesDatasetRule:
             incidence_angle_deg=35.0,
         )
 
-    def test_clamped_high_coherence_observation_is_not_reliable(self):
-        obs = self._obs(-14.0, 0.95)  # stored as -9.999, flagged CLAMPED
-        assert obs.quality_flag == DataQualityFlag.OUT_OF_BOUNDS_CLAMPED
+    def test_out_of_bounds_jump_at_high_coherence_is_not_reliable(self):
+        # Review finding 21: was test_clamped_high_coherence_observation_is_not_reliable
+        # (cumulative clamp). Same guarantee under the per-interval rule: a
+        # -14 cm jump at coherence 0.95 is flagged and never reliable.
+        ts = datetime(2024, 1, 1, tzinfo=UTC)
+        first = self._obs(0.1, 0.95)
+        jump = self._obs(-14.0, 0.95).model_copy(update={"timestamp": ts + timedelta(days=12)})
+        rec = ARSTelemetryRecord(
+            design=_design(),
+            sar_series=[first, jump],
+            rainfall_series=[
+                RainfallObservation(structure_id="ARS-0001", timestamp=ts, rainfall_mm=1.0)
+            ],
+        )
+        obs = rec.sar_series[1]
+        assert obs.quality_flag == DataQualityFlag.STEP_OUT_OF_BOUNDS
+        assert obs.los_displacement_cm == -14.0  # kept, not clamped
         assert obs.is_reliable is False
 
     def test_coherent_fraction_excludes_clamped(self):

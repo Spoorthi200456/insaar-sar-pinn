@@ -13,7 +13,7 @@ from src.data.preprocessing import (
     interpolate_missing_1d,
     time_deltas_days,
 )
-from src.data.schemas import DataQualityFlag, SARObservation
+from src.data.schemas import SARObservation
 
 
 class TestPreprocessing:
@@ -95,8 +95,12 @@ class TestARSDataset:
         record = small_records[0]
         sar = sorted(record.sar_series, key=lambda o: o.timestamp)
         k = 3
-        # A real -14 cm event at high coherence: the schema stores -9.999 and
-        # flags it OUT_OF_BOUNDS_CLAMPED, so it must not be fitted as truth.
+        # A -14 cm jump at high coherence within one interval of a series that
+        # is otherwise within a few mm. Review finding 21: it is no longer
+        # clamped by SARObservation (the old precondition asserted the
+        # cumulative clamp); the per-interval bound flags it, so it must still
+        # not be fitted as truth. model_copy skips the record validator, so this
+        # also checks that the dataset re-applies the bound itself.
         sar[k] = SARObservation(
             structure_id=sar[k].structure_id,
             timestamp=sar[k].timestamp,
@@ -104,7 +108,7 @@ class TestARSDataset:
             coherence=0.9,
             incidence_angle_deg=sar[k].incidence_angle_deg,
         )
-        assert sar[k].quality_flag == DataQualityFlag.OUT_OF_BOUNDS_CLAMPED
+        assert sar[k].los_displacement_cm == -14.0  # stored as measured
         record = record.model_copy(update={"sar_series": sar})
 
         sample = ARSDataset([record], sequence_length=len(sar))[0]

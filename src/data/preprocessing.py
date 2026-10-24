@@ -15,6 +15,11 @@ COHERENCE_THRESHOLD = 0.7
 MAX_ABS_DISPLACEMENT_CM = 10.0
 MAX_RAINFALL_MM = 1000.0
 EARTH_RADIUS_M = 6_371_000.0
+# Review finding 21: the +/-10 cm data bound applies to the LOS change between
+# an acquisition and the last accepted one, not to cumulative displacement
+# (which is relative to the first acquisition and legitimately exceeds 10 cm in
+# subsiding aquifers). PROVISIONAL value, docs/open_questions.md OQ17.
+MAX_INTERVAL_CHANGE_CM = 10.0
 
 
 @dataclass(frozen=True)
@@ -69,6 +74,28 @@ def clamp_displacement(values_cm: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     was_clamped = np.abs(values_cm) >= MAX_ABS_DISPLACEMENT_CM
     clamped = np.clip(values_cm, -MAX_ABS_DISPLACEMENT_CM + 1e-3, MAX_ABS_DISPLACEMENT_CM - 1e-3)
     return clamped, was_clamped
+
+
+def flag_interval_jumps(values_cm: np.ndarray, usable: np.ndarray) -> np.ndarray:
+    """
+    True where |d_k - d_ref| > MAX_INTERVAL_CHANGE_CM, with d_ref the last usable,
+    not-flagged value before k (time-sorted input). Comparing with the last
+    ACCEPTED value means an isolated spike flags only itself. A persistent step
+    (e.g. a phase-unwrapping error) flags every later value too: conservative,
+    documented in docs/math/data_quality_bounds.md.
+    """
+    values = np.asarray(values_cm, dtype=np.float64)
+    usable = np.asarray(usable, dtype=bool)
+    jump = np.zeros(len(values), dtype=bool)
+    ref = None
+    for k in range(len(values)):
+        if not usable[k]:
+            continue
+        if ref is not None and abs(values[k] - ref) > MAX_INTERVAL_CHANGE_CM:
+            jump[k] = True
+        else:
+            ref = values[k]
+    return jump
 
 
 def clamp_rainfall(values_mm: np.ndarray) -> tuple[np.ndarray, np.ndarray]:

@@ -5,7 +5,9 @@ These models are the single source of truth for what "valid telemetry" means
 before it is allowed anywhere near a tensor. They encode the bounds and
 invariants laid out in Module 3 of the framework:
 
-  * SAR/InSAR line-of-sight displacement is bounded to +/- 10 cm.
+  * The LOS displacement CHANGE between an acquisition and the last accepted
+    one is bounded to +/- 10 cm (review finding 21); larger jumps are flagged
+    STEP_OUT_OF_BOUNDS, not clamped. Cumulative displacement is not bounded.
   * InSAR coherence must lie in [0, 1]; points with coherence < 0.7 are
     considered unreliable for training (flagged, not silently dropped).
   * Rainfall is bounded to [0, 1000] mm over an aggregation interval.
@@ -30,11 +32,11 @@ from pydantic import (
     model_validator,
 )
 
-from src.data.preprocessing import COHERENCE_THRESHOLD
+from src.data.preprocessing import COHERENCE_THRESHOLD, flag_interval_jumps
 
 # Stored values that are not the true measurement (clamped to the +/-10 cm
 # bound, or missing): never reliable, whatever the coherence.
-UNRELIABLE_FLAGS = frozenset({"out_of_bounds_clamped", "missing"})
+UNRELIABLE_FLAGS = frozenset({"out_of_bounds_clamped", "missing", "step_out_of_bounds"})
 
 
 # --------------------------------------------------------------------------- #
@@ -48,6 +50,7 @@ class DataQualityFlag(str, Enum):
     MISSING = "missing"
     INTERPOLATED = "interpolated"
     OUT_OF_BOUNDS_CLAMPED = "out_of_bounds_clamped"
+    STEP_OUT_OF_BOUNDS = "step_out_of_bounds"
     ANOMALY_NO_RAINFALL = "anomaly_no_rainfall"
 
 
@@ -167,12 +170,12 @@ class SARObservation(StrictModel):
 
     @model_validator(mode="after")
     def _bounds_and_flags(self) -> SARObservation:
-        # Hard physical bound from the data validation contract: |d_i(t)| < 10 cm.
-        if abs(self.los_displacement_cm) >= 10.0:
-            clamped = math.copysign(9.999, self.los_displacement_cm)
-            object.__setattr__(self, "los_displacement_cm", clamped)
-            object.__setattr__(self, "quality_flag", DataQualityFlag.OUT_OF_BOUNDS_CLAMPED)
-        elif self.coherence < COHERENCE_THRESHOLD and self.quality_flag == DataQualityFlag.OK:
+        # Review finding 21: no bound on the cumulative value here (it is
+        # relative to the first acquisition); the per-interval bound needs the
+        # neighbouring acquisitions and is applied in ARSTelemetryRecord.
+        if not math.isfinite(self.los_displacement_cm):
+            raise ValueError("los_displacement_cm must be finite")
+        if self.coherence < COHERENCE_THRESHOLD and self.quality_flag == DataQualityFlag.OK:
             object.__setattr__(self, "quality_flag", DataQualityFlag.LOW_COHERENCE)
         return self
 
@@ -262,6 +265,13 @@ class ARSTelemetryRecord(StrictModel):
                 f"sar_series for {sid!r} mixes tracks {sorted(tracks)}; submit one track "
                 "direction per record"
             )
+        # Per-interval bound (finding 21): flag, do not clamp.
+        sar_sorted = sorted(self.sar_series, key=lambda o: o.timestamp)
+        usable = [o.quality_flag != DataQualityFlag.MISSING for o in sar_sorted]
+        jumps = flag_interval_jumps([o.los_displacement_cm for o in sar_sorted], usable)
+        for obs, jump in zip(sar_sorted, jumps, strict=True):
+            if jump:
+                object.__setattr__(obs, "quality_flag", DataQualityFlag.STEP_OUT_OF_BOUNDS)
         return self
 
     @property

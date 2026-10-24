@@ -26,9 +26,9 @@ from src.data.graph import DEFAULT_CONNECTIVITY_RADIUS_KM, StructureGraph
 from src.data.preprocessing import (
     NormalizationStats,
     aggregate_rainfall_to_insar_cadence,
-    clamp_displacement,
     clamp_rainfall,
     compute_normalization_stats,
+    flag_interval_jumps,
     interpolate_missing_1d,
     time_deltas_days,
 )
@@ -146,9 +146,11 @@ class ARSDataset(Dataset):
         # One rule for the whole code base: `SARObservation.is_reliable`
         # (coherence >= COHERENCE_THRESHOLD and not clamped / missing).
         reliable = np.array([o.is_reliable for o in sar_sorted], dtype=bool)
+        # Per-interval bound (finding 21), re-applied here so records that skipped
+        # validation (e.g. model_copy) cannot bypass it. No cumulative clamp.
+        reliable &= ~flag_interval_jumps(disp_raw, reliable)
 
-        disp_clamped, _ = clamp_displacement(disp_raw)
-        disp_filled, was_interp = interpolate_missing_1d(disp_clamped, reliable)
+        disp_filled, was_interp = interpolate_missing_1d(disp_raw, reliable)
 
         rain_ts = np.array([o.timestamp.timestamp() for o in rain_sorted], dtype=np.float64)
         rain_mm_raw = np.array([o.rainfall_mm for o in rain_sorted], dtype=np.float64)

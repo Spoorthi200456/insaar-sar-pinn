@@ -57,7 +57,8 @@ textbook result each step relies on. Never skip steps.
 ## Units table (every physical tensor must appear here)
 | quantity | symbol | units | where |
 |---|---|---|---|
-| LOS displacement (+ toward satellite) | d | cm | schemas.py |
+| LOS displacement (+ toward satellite) | d | cm, relative to the first acquisition; NOT bounded cumulatively | schemas.py |
+| per-interval LOS change bound (`MAX_INTERVAL_CHANGE_CM`) | B | cm, 10 (provisional, OQ17; finding 21) | preprocessing.py |
 | skeletal storage coefficient (`ARSNet.skeletal_storage`) | S_k | dimensionless, (1e-6, 1e-2), init 1e-4 (provisional) | network.py |
 | radar incidence angle | θ | degrees, 20–50 | schemas.py |
 | rainfall | P | mm per InSAR interval | dataset.py |

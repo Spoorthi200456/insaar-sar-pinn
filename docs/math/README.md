@@ -15,6 +15,7 @@ marked "check against your edition".
 | [flow_equation_leakage.md](flow_equation_leakage.md) | Hantush leakage sink in the flow equation | 11 |
 | [loss_scaling.md](loss_scaling.md) | Dimensionless total loss (σ_d, σ_r, σ_h) | 29 |
 | [validation_split.md](validation_split.md) | Train / validation / test split by structure group | 24 |
+| [data_quality_bounds.md](data_quality_bounds.md) | Per-interval displacement bound; flagged rainfall clamp | 21, 26 |
 
 The governing equations used by the code are summarised in `CLAUDE.md` →
 "Governing physics"; these notes are the full derivations behind it.
