@@ -318,7 +318,20 @@ failed before the fix; see each commit message for the before/after output.
 | 12 | `src/backend/inference_engine.py::predict` | API verdict compares m/day with m³/day; padding averaged in | **Fixed** |
 | 13 | `src/backend/inference_engine.py::explain`, `api.py` | /explain drops surveyed edges, so its residual uses another graph | **Fixed** |
 | 14 | `src/backend/inference_engine.py::_mc_dropout_uncertainty` | Concurrent requests can predict with dropout on | **Fixed** |
+| 15 | `README.md` | Claims "production", a PDE inversion, and a `--config` flag that does not exist | **Fixed** (docs) |
+| 16 | `.github/workflows/deploy.yml` | Lint job fails (58 ruff errors, 18 files unformatted), so CI never ran the tests | **Fixed** |
+| 17 | `src/backend/export_onnx.py` | ONNX export path untested | **Fixed** (test added) |
+| 18 | `tests/test_dataset.py` | Collate adjacency test passes trivially on an all-zero matrix | **Fixed** (test strengthened) |
+| 19 | `frontend/components/Dashboard.tsx` | Dashboard presents synthetic, provisional outputs without a warning | **Fixed** (not compiled) |
 | 20 | `src/models/network.py` (recharge decoder) | R starts at ~0.7 m/day (700 mm/day): not non-dimensionalised | **Fixed** |
+| 21 | `src/data/schemas.py::SARObservation` | ±10 cm bound applied to *cumulative* displacement | Open (OQ17) |
+| 22 | `src/data/preprocessing.py::time_deltas_days` | Δt at step 0 is fabricated (copied from step 1) | Open (low) |
+| 23 | `src/backend/inference_engine.py::explain` | `latent_drift_score` does not measure drift | Open |
+| 24 | `src/training/train.py` | "Best" checkpoint chosen on training loss; no validation split | Open |
+| 25 | `src/models/losses.py`, `train.py` | Well heads (`well_series`) never reach the loss | Open (Phase B) |
+| 26 | `src/data/schemas.py::RainfallObservation` | Rain > 1000 mm silently clamped, no flag | Open (low) |
+| 27 | `src/backend/api.py` (WebSocket) | Streaming endpoint has no test | Open |
+| 28 | `src/models/layers.py::CVEncoder` | CV branch unused by any training, demo or test path | Open |
 
 ## 11. Flow equation has no sink
 
@@ -395,10 +408,27 @@ failed before the fix; see each commit message for the before/after output.
 - **Status:** Fixed. The cost is that eager-model requests are serialised;
   the ONNX path is unaffected.
 
-## 20. Recharge output is not scaled to a physical magnitude
+## 15–19. Documentation, CI and test-coverage findings (fixed)
 
-(Numbered 20 because findings 15–19 and 21–25 are grouped in the "open /
-documentation" section below.)
+- **15 README.** It said "Production implementation … inverts a coupled
+  poroelastic groundwater-flow PDE"; nothing real has been inverted. It
+  documented `train --config configs/train.yaml`; neither the flag nor the
+  file exists. Rewritten as a research prototype, with real commands.
+- **16 CI.** `ruff check src tests` reported 58 errors and `black --check`
+  18 files on `main`. The `test` job has `needs: lint`, so **CI never ran the
+  tests**. Fixed in two lint/format-only commits. The suite was unchanged
+  (105 passed) and ruff and black now pass.
+- **17 ONNX.** No test covered export. Added an export → onnxruntime → eager
+  comparison. It also passes on `main`: a coverage gap, not a live bug. It
+  would have caught `torch.deg2rad` (no ONNX symbolic), which was found by
+  hand during the finding-2 fix.
+- **18 Weak test.** `test_collate_builds_adjacency` checked symmetry of an
+  all-zero matrix. It now also requires a real 1 km edge with
+  a_ij = 1/(1 km)².
+- **19 Dashboard.** Added a permanent "SYNTHETIC DATA, PROVISIONAL PHYSICS"
+  banner. Not compiled: `npm install` was not run.
+
+## 20. Recharge output is not scaled to a physical magnitude
 
 - **Where:** `ARSNet.forward`, `q = softplus(decoder(...))`.
 - **Problem:** softplus of an O(1) network output is ≈ 0.7 m/day = 700 mm/day
@@ -412,6 +442,38 @@ documentation" section below.)
 - **Test:** `tests/test_models.py::TestRechargeOutputScale`. Before: mean R at
   init **0.709 m/day** (failed; bound 0.1–50 mm/day). After: passed.
 - **Status:** Fixed.
+
+## 21–28. Open findings (documented, not fixed)
+
+- **21. The ±10 cm clamp hits cumulative displacement.**
+  `SARObservation` clamps |d| ≥ 10 cm and flags it unreliable, but d is
+  relative to the *first* acquisition. Indian over-exploited aquifers subside
+  several cm per year (tens of cm over a multi-year series), so the later part
+  of a long series would be silently discarded. That is the period that
+  shows whether a structure is working. The bound should probably apply
+  to per-interval change. **Not fixed:** this changes the data contract (OQ17).
+- **22. Fabricated Δt₀.** `time_deltas_days` sets Δt₀ = Δt₁ (no
+  look-behind). Δt₀ feeds the transformer's positional encoding and makes
+  step 0 count as "real" for `valid_mask`. The PDE term never uses step 0. Low
+  impact; left as is.
+- **23. `latent_drift_score`** is ‖e − mean(e)‖ over the components of one
+  node embedding: a spread, not a drift against any reference. It should be
+  renamed or redefined against a training-time reference. It is an API field,
+  so it is left for the author.
+- **24. No validation split.** `train.py` saves the checkpoint with the lowest
+  *training* loss. No hold-out structures or time window, so overfitting is
+  invisible.
+- **25. Well heads unused.** `ARSTelemetryRecord.well_series` and the loss's
+  `boundary_head` / `initial_head` inputs exist but no training path connects
+  them. Without heads, R is identifiable only up to S_k/S (finding-2 plan
+  §7; confirmed by the known-answer experiment). This is Phase B, a new loss
+  term that needs its own plan.
+- **26. Silent rainfall clamp.** Rain > 1000 mm per interval is clamped to 1000
+  with no quality flag. That is plausible for a single interval, but the event
+  is hidden.
+- **27. WebSocket untested.** `/ws/telemetry` has no test.
+- **28. CV branch unused.** `CVEncoder` is not exercised by any training, demo
+  or test path. Decide whether it is in scope.
 
 ---
 
