@@ -79,7 +79,12 @@ WELL_NOISE_M = 0.05
 #   budget: sum_t lr_t ~ lr * EPOCHS / 2 (cosine) >= 4  =>  lr >= 0.0133.
 #   Everything else (S_k start 1e-4, network LR, epochs, data, thresholds) is
 #   unchanged. Diagnostic only: a protocol revised after seeing run 1.
-PROTOCOLS = ("preregistered", "revised-run2")
+# "current-code-run3": the training code after the author's decisions 1, 2, 4
+#   (train.build_optimizer; seasonal design-capacity limit in the loss; wells
+#   through the well-head input, absolute head with a datum offset). Declared
+#   and committed before run 3 was made.
+PROTOCOLS = ("preregistered", "revised-run2", "current-code-run3")
+WELL_DATUM_OFFSET_M = 87.3  # wells report absolute head; the model must remove this
 GLOBAL_SCALAR_LR = 0.02
 GLOBAL_SCALARS = ("storativity_logit", "skeletal_storage_raw", "leakance_raw")
 
@@ -184,7 +189,11 @@ def run_scenario(
         _freeze_to_truth(model, sim.cfg)
     loss_fn = CompositeARSLoss(LossWeights())
     params = [p for p in model.parameters() if p.requires_grad]
-    if protocol == "revised-run2":
+    if protocol == "current-code-run3":
+        from src.training.train import build_optimizer
+
+        opt = build_optimizer(model, lr=LR, weight_decay=WEIGHT_DECAY)
+    elif protocol == "revised-run2":
         named = {n: p for n, p in model.named_parameters() if p.requires_grad}
         scalars = [named[n] for n in GLOBAL_SCALARS if n in named]
         others = [p for n, p in named.items() if n not in GLOBAL_SCALARS]
@@ -202,10 +211,16 @@ def run_scenario(
     if with_wells:
         rng = np.random.default_rng(SEED + 1)
         h_obs = sim.head + WELL_NOISE_M * rng.standard_normal(sim.head.shape)
-        boundary = dict(
-            boundary_head=torch.tensor(h_obs, dtype=torch.float32),
-            boundary_mask=batch["valid_step_mask"].clone(),
-        )
+        if protocol == "current-code-run3":
+            boundary = dict(
+                well_head_m=torch.tensor(h_obs + WELL_DATUM_OFFSET_M, dtype=torch.float32),
+                well_mask=batch["valid_step_mask"].clone(),
+            )
+        else:
+            boundary = dict(
+                boundary_head=torch.tensor(h_obs, dtype=torch.float32),
+                boundary_mask=batch["valid_step_mask"].clone(),
+            )
 
     def forward():
         return model(
@@ -362,7 +377,11 @@ def main(protocol: str = "preregistered") -> None:
         )
         print("    " + ", ".join(f"{k}={v:.3g}" for k, v in res.diagnostics.items()))
     summary["protocol"] = protocol
-    stem = "results" if protocol == "preregistered" else "results_run2"
+    stem = {
+        "preregistered": "results",
+        "revised-run2": "results_run2",
+        "current-code-run3": "results_run3",
+    }[protocol]
     (HERE / f"{stem}.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
     (HERE / f"{stem}.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     print(f"wrote {HERE / stem}.csv and {stem}.json")

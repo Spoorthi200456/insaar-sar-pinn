@@ -263,3 +263,19 @@ S_k can reach a realistic value. It cannot say *how much* any structure recharge
 mm/day or m³/day, without independent S_k and S. So the API's `recharge_efficiency`
 (R·A/Q_design) is not meaningful in absolute terms from InSAR alone. In hard rock (C) it
 cannot do either.
+
+### Run 3 protocol — current training code after the author's decisions (declared before running)
+
+The author's decisions of 2026-10-24, all made **after** seeing run 1. Run 1b stays the
+official pre-registered result.
+
+1. `train.build_optimizer`: global scalars at lr 0.02, as in run 2, now in `src/`.
+2. Design capacity is a soft limit on the 122-day seasonal-average recharge, not a
+   per-pass ceiling (finding 31).
+4. Wells go through the new optional well-head input. In scenario D they are given as
+   **absolute** heads with a +87.3 m datum offset, which the model must remove.
+
+Same simulator, seed, epochs (600), network lr (1e-3) and thresholds. One run:
+`python experiments/synthetic_recovery/run_recovery.py --protocol current-code-run3`
+(writes `results_run3.*`). Whatever it shows is reported, labelled "under a protocol
+revised after seeing run 1".
