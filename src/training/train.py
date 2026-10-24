@@ -14,7 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import random
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import structlog
@@ -23,7 +23,12 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from src.data.dataset import build_dataloader
-from src.data.schemas import ARSDesignParameters, ARSTelemetryRecord, RainfallObservation, SARObservation
+from src.data.schemas import (
+    ARSDesignParameters,
+    ARSTelemetryRecord,
+    RainfallObservation,
+    SARObservation,
+)
 from src.models.coupling import head_to_los_cm
 from src.models.losses import CompositeARSLoss, LossWeights
 from src.models.network import ARSNet
@@ -56,7 +61,7 @@ def make_synthetic_records_with_truth(
     rng = random.Random(seed)
     records: list[ARSTelemetryRecord] = []
     truths: list[dict] = []
-    base_time = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    base_time = datetime(2024, 1, 1, tzinfo=UTC)
     dt_days = 7.0
     s = SYNTH_STORATIVITY
     leakance = s / SYNTH_DRAINAGE_TIMESCALE_DAYS
@@ -102,11 +107,11 @@ def make_synthetic_records_with_truth(
                 coherence=c,
                 incidence_angle_deg=theta,
             )
-            for ts, d, c in zip(timestamps, d_clean, coherence)
+            for ts, d, c in zip(timestamps, d_clean, coherence, strict=False)
         ]
         rain_series = [
             RainfallObservation(structure_id=structure_id, timestamp=ts, rainfall_mm=p_mm)
-            for ts, p_mm in zip(timestamps, rain)
+            for ts, p_mm in zip(timestamps, rain, strict=False)
         ]
         records.append(
             ARSTelemetryRecord(design=design, sar_series=sar_series, rainfall_series=rain_series)
@@ -126,7 +131,9 @@ def make_synthetic_records_with_truth(
     return records, truths
 
 
-def make_synthetic_records(n_structures: int, n_timesteps: int = 52, seed: int = 0) -> list[ARSTelemetryRecord]:
+def make_synthetic_records(
+    n_structures: int, n_timesteps: int = 52, seed: int = 0
+) -> list[ARSTelemetryRecord]:
     """Synthetic telemetry for smoke tests / demos (see `make_synthetic_records_with_truth`)."""
     return make_synthetic_records_with_truth(n_structures, n_timesteps, seed)[0]
 
@@ -154,7 +161,8 @@ def resolve_device(requested: str | None) -> str:
                 "(e.g. a CPU-only wheel got installed) rather than a code problem -- run:\n"
                 "  pip uninstall torch torchvision torchaudio -y\n"
                 "  pip install torch --index-url https://download.pytorch.org/whl/cu126\n"
-                "(pick the CUDA tag matching your driver at https://pytorch.org/get-started/locally/), "
+                "(pick the CUDA tag matching your driver at "
+                "https://pytorch.org/get-started/locally/), "
                 "then re-run this command."
             )
         return "cuda"
@@ -272,7 +280,9 @@ def train(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train ARSNet on ARS telemetry")
     parser.add_argument("--data", type=Path, default=None, help="Path to JSON telemetry records")
-    parser.add_argument("--synthetic", type=int, default=0, help="Generate N synthetic structures instead")
+    parser.add_argument(
+        "--synthetic", type=int, default=0, help="Generate N synthetic structures instead"
+    )
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--sequence-length", type=int, default=52)

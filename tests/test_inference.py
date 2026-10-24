@@ -111,5 +111,6 @@ def test_concurrent_requests_never_predict_with_dropout_on():
     b.start()
     a.join(30.0)
     b.join(30.0)
-    b_point = [training for name, training in seen if name == "B"][0]  # B's first call = point prediction
+    # B's first forward call is its point prediction
+    b_point = [training for name, training in seen if name == "B"][0]
     assert b_point is False

@@ -17,9 +17,9 @@ invariants laid out in Module 3 of the framework:
 from __future__ import annotations
 
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Annotated, Optional
+from typing import Annotated
 from uuid import UUID
 
 from pydantic import (
@@ -52,8 +52,8 @@ class DataQualityFlag(str, Enum):
 
 def _utc(dt: datetime) -> datetime:
     if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
 
 
 class StrictModel(BaseModel):
@@ -73,15 +73,15 @@ class StrictModel(BaseModel):
 
 class ARSDesignParameters(StrictModel):
     structure_id: str = Field(..., min_length=1, max_length=128)
-    name: Optional[str] = Field(default=None, max_length=256)
+    name: str | None = Field(default=None, max_length=256)
     latitude: float = Field(..., ge=-90.0, le=90.0)
     longitude: float = Field(..., ge=-180.0, le=180.0)
     height_m: float = Field(..., gt=0.0, le=200.0)
     storage_volume_m3: float = Field(..., gt=0.0)
     catchment_area_km2: float = Field(..., gt=0.0)
-    construction_date: Optional[datetime] = None
+    construction_date: datetime | None = None
     design_recharge_capacity_m3_per_day: float = Field(..., gt=0.0)
-    recharge_area_m2: Optional[float] = Field(
+    recharge_area_m2: float | None = Field(
         default=None, gt=0.0,
         description=(
             "Area through which the structure recharges the aquifer (water-spread / "
@@ -101,7 +101,7 @@ class ARSDesignParameters(StrictModel):
 
     @field_validator("construction_date")
     @classmethod
-    def _tz_aware(cls, v: Optional[datetime]) -> Optional[datetime]:
+    def _tz_aware(cls, v: datetime | None) -> datetime | None:
         return _utc(v) if v is not None else None
 
     @property
@@ -156,7 +156,7 @@ class SARObservation(StrictModel):
         return _utc(v)
 
     @model_validator(mode="after")
-    def _bounds_and_flags(self) -> "SARObservation":
+    def _bounds_and_flags(self) -> SARObservation:
         # Hard physical bound from the data validation contract: |d_i(t)| < 10 cm.
         if abs(self.los_displacement_cm) >= 10.0:
             clamped = math.copysign(9.999, self.los_displacement_cm)
@@ -226,7 +226,7 @@ class ARSTelemetryRecord(StrictModel):
     well_series: list[WellHeadObservation] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _consistent_ids(self) -> "ARSTelemetryRecord":
+    def _consistent_ids(self) -> ARSTelemetryRecord:
         sid = self.design.structure_id
         for obs in self.sar_series:
             if obs.structure_id != sid:
@@ -273,7 +273,7 @@ class TelemetryBatch(StrictModel):
     edges: list[GraphEdge] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _edges_reference_known_structures(self) -> "TelemetryBatch":
+    def _edges_reference_known_structures(self) -> TelemetryBatch:
         known = {r.design.structure_id for r in self.records}
         for e in self.edges:
             if e.source_id not in known or e.target_id not in known:
@@ -320,7 +320,7 @@ class StructurePrediction(StrictModel):
     confidence_interval_m3_per_day: tuple[float, float]
 
     @model_validator(mode="after")
-    def _ci_ordered(self) -> "StructurePrediction":
+    def _ci_ordered(self) -> StructurePrediction:
         lo, hi = self.confidence_interval_m3_per_day
         if lo > hi:
             raise ValueError("confidence interval lower bound exceeds upper bound")
@@ -331,7 +331,7 @@ class PredictionResponse(StrictModel):
     batch_id: UUID
     model_version: str
     predictions: list[StructurePrediction]
-    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class ExplainabilityResponse(StrictModel):

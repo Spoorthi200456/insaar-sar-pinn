@@ -11,7 +11,7 @@ Derivation: docs/math/deformation_coupling.md.
 from __future__ import annotations
 
 import math
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import torch
@@ -40,7 +40,8 @@ class TestHeadToLOS:
         # theta = 0: 1e-4 * 1 m = 1e-4 m = 0.01 cm
         assert head_to_los_cm(dh, s_k, torch.tensor([0.0])).item() == pytest.approx(0.01, rel=1e-6)
         # theta = 60 deg: cos 60 = 0.5 -> 0.005 cm
-        assert head_to_los_cm(dh, s_k, torch.tensor([60.0])).item() == pytest.approx(0.005, rel=1e-5)
+        d60 = head_to_los_cm(dh, s_k, torch.tensor([60.0])).item()
+        assert d60 == pytest.approx(0.005, rel=1e-5)
         assert CM_PER_M == 100.0
 
     def test_incidence_angle_scales_by_cosine(self):
@@ -111,7 +112,7 @@ class TestSyntheticGeneratorUsesModelCoupling:
         records, truth = make_synthetic_records_with_truth(
             n_structures=3, n_timesteps=20, seed=3, noise_cm=0.0
         )
-        for rec, t in zip(records, truth):
+        for rec, t in zip(records, truth, strict=False):
             sar = sorted(rec.sar_series, key=lambda o: o.timestamp)
             d_obs = torch.tensor([o.los_displacement_cm for o in sar], dtype=torch.float64)
             h = torch.tensor(t["head_m"], dtype=torch.float64).unsqueeze(0)
@@ -136,16 +137,16 @@ def _sar(ts, **kw):
 class TestSchemaIncidenceAndTrack:
     def test_missing_incidence_angle_rejected(self):
         with pytest.raises(ValidationError):
-            SARObservation(structure_id="A", timestamp=datetime.now(timezone.utc),
+            SARObservation(structure_id="A", timestamp=datetime.now(UTC),
                            los_displacement_cm=0.1, coherence=0.9)
 
     @pytest.mark.parametrize("theta", [5.0, 70.0])
     def test_out_of_range_incidence_angle_rejected(self, theta):
         with pytest.raises(ValidationError):
-            _sar(datetime.now(timezone.utc), incidence_angle_deg=theta)
+            _sar(datetime.now(UTC), incidence_angle_deg=theta)
 
     def test_mixed_tracks_rejected(self):
-        t0 = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        t0 = datetime(2024, 1, 1, tzinfo=UTC)
         design = ARSDesignParameters(structure_id="ARS-0001", latitude=12.9, longitude=77.5,
                                      height_m=5.0, storage_volume_m3=1000.0, catchment_area_km2=2.0,
                                      design_recharge_capacity_m3_per_day=100.0)

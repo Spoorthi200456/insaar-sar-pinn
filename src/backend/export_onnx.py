@@ -206,8 +206,8 @@ def quantize_dynamic_int8(onnx_path: Path, output_path: Path | None = None) -> P
 
 def convert_graph_to_fp16(onnx_path: Path, output_path: Path | None = None) -> Path:
     """GPU-targeted FP16 graph conversion (weights + compatible ops cast to float16)."""
-    from onnxconverter_common import float16
     import onnx
+    from onnxconverter_common import float16
 
     output_path = output_path or onnx_path.with_name(onnx_path.stem + ".fp16.onnx")
     model = onnx.load(str(onnx_path))
@@ -217,7 +217,9 @@ def convert_graph_to_fp16(onnx_path: Path, output_path: Path | None = None) -> P
     return output_path
 
 
-def try_export_tensorrt_engine(onnx_path: Path, output_path: Path, fp16: bool = True) -> Path | None:
+def try_export_tensorrt_engine(
+    onnx_path: Path, output_path: Path, fp16: bool = True
+) -> Path | None:
     """
     Best-effort TensorRT engine build from the exported ONNX graph. Requires
     `tensorrt` + a CUDA-capable build host; returns None (and logs a clear
@@ -263,11 +265,15 @@ def try_export_tensorrt_engine(onnx_path: Path, output_path: Path, fp16: bool = 
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Export ARSNet to optimized ONNX / TensorRT artifacts")
+    parser = argparse.ArgumentParser(
+        description="Export ARSNet to optimized ONNX / TensorRT artifacts"
+    )
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--sequence-length", type=int, default=52)
-    parser.add_argument("--num-structures", type=int, default=32, help="Trace batch size (dynamic afterward)")
+    parser.add_argument(
+        "--num-structures", type=int, default=32, help="Trace batch size (dynamic afterward)"
+    )
     parser.add_argument("--design-feature-dim", type=int, default=3)
     parser.add_argument("--opset", type=int, default=17)
     parser.add_argument("--quantize", choices=["none", "int8"], default="none")
@@ -277,7 +283,12 @@ def main() -> None:
 
     model = load_model_from_checkpoint(args.checkpoint)
     onnx_path = export_to_onnx(
-        model, args.output, args.sequence_length, args.num_structures, args.design_feature_dim, args.opset
+        model,
+        args.output,
+        args.sequence_length,
+        args.num_structures,
+        args.design_feature_dim,
+        args.opset,
     )
 
     if args.quantize == "int8":

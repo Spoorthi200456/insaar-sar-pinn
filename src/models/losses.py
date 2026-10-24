@@ -30,7 +30,9 @@ MM_PER_M = 1000.0
 _MASS_BALANCE_FLOOR_M = 1e-3
 
 
-def _masked_mse(pred: torch.Tensor, target: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor:
+def _masked_mse(
+    pred: torch.Tensor, target: torch.Tensor, mask: torch.Tensor | None
+) -> torch.Tensor:
     """Mean squared error over `mask == True` elements only; 0 if mask is empty."""
     diff_sq = (pred - target) ** 2
     if mask is None:
@@ -184,7 +186,7 @@ class CompositeARSLoss(nn.Module):
         leakance: torch.Tensor | float = 0.0,         # scalar  L [1/day] (finding 11)
         observation_mask: torch.Tensor | None = None,      # (B, T) bool, True == reliable
         boundary_head: torch.Tensor | None = None,          # (B, T) known head, if any
-        boundary_mask: torch.Tensor | None = None,           # (B, T) bool, True where boundary_head is known
+        boundary_mask: torch.Tensor | None = None,           # (B, T) bool, True where known
         initial_head: torch.Tensor | None = None,             # (B,)  h_i(0) if known
         node_mask: torch.Tensor | None = None,  # (B,) bool, True == seed node (finding 4)
         valid_mask: torch.Tensor | None = None,  # (B, T) bool, True == real acquisition

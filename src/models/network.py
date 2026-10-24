@@ -178,8 +178,6 @@ class ARSNet(nn.Module):
         coherence_mask: torch.Tensor | None = None,  # (B, T) bool, True == reliable
         cv_patch: torch.Tensor | None = None,         # (B, C, H, W)
     ) -> ARSNetOutput:
-        b = design_features.shape[0]
-
         if self.use_cv_branch:
             if cv_patch is None:
                 raise ValueError("cv_in_channels was configured but no cv_patch was provided")

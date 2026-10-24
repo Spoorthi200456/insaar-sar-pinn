@@ -174,7 +174,9 @@ async def explain(structure_id: str, request: Request) -> ExplainabilityResponse
 
         batch = TelemetryBatch.model_validate(raw)
     except ValidationError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=exc.errors()) from exc
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=exc.errors()
+        ) from exc
 
     engine = get_engine()
     if structure_id not in {r.design.structure_id for r in batch.records}:
@@ -235,7 +237,7 @@ async def telemetry_stream(websocket: WebSocket) -> None:
                 raw_message = await asyncio.wait_for(
                     websocket.receive_text(), timeout=settings.ws_heartbeat_seconds
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 await websocket.send_json({"type": "heartbeat", "ts": time.time()})
                 continue
 

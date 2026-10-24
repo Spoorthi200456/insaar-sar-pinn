@@ -143,7 +143,7 @@ class InferenceEngine:
             "coherence_mask": batch["coherence_mask"].numpy().astype(bool),
         }
         outputs = self._session.run(None, feed)
-        return dict(zip(_OUTPUT_ORDER, outputs))
+        return dict(zip(_OUTPUT_ORDER, outputs, strict=False))
 
     def _run_torch(self, batch: dict[str, torch.Tensor | list[str]]) -> dict[str, np.ndarray]:
         assert self._torch_model is not None
@@ -196,7 +196,8 @@ class InferenceEngine:
             stacked = np.stack(samples, axis=0)  # (n_samples, B, T)
             real = batch["valid_step_mask"].numpy()
             std = stacked.std(axis=0)  # (B, T) m/day
-            return (std * real).sum(axis=1) / np.maximum(real.sum(axis=1), 1)  # (B,) over real steps
+            # (B,) mean over real steps
+            return (std * real).sum(axis=1) / np.maximum(real.sum(axis=1), 1)
         finally:
             model.eval()
 

@@ -147,7 +147,7 @@ class ARSDataset(Dataset):
         design_vec_norm = np.array(
             [
                 self._design_stats[name].apply(np.array([val]))[0]
-                for name, val in zip(self.DESIGN_FEATURE_NAMES, design_vec)
+                for name, val in zip(self.DESIGN_FEATURE_NAMES, design_vec, strict=False)
             ],
             dtype=np.float32,
         )

@@ -79,7 +79,8 @@ class TestCompositeARSLoss:
     def test_design_capacity_penalty_activates_when_exceeded(self):
         loss_fn = CompositeARSLoss(LossWeights())
         batch = self._dummy_batch()
-        batch["recharge_rate"] = torch.full_like(batch["recharge_rate"], 1000.0)  # way over capacity
+        # way over capacity
+        batch["recharge_rate"] = torch.full_like(batch["recharge_rate"], 1000.0)
         breakdown = loss_fn(**batch)
         assert breakdown.design_capacity.item() > 0
 
@@ -263,7 +264,9 @@ class TestRegularizerUnits:
         loss_fn = CompositeARSLoss(LossWeights())
         base = loss_fn(**self._batch(0.17, 1.0, 100.0))
         c = 37.0
-        scaled = loss_fn(**self._batch(0.17, 1.0, 100.0 * c, area=self.A * c, catch=self.A_CATCH * c))
+        scaled = loss_fn(
+            **self._batch(0.17, 1.0, 100.0 * c, area=self.A * c, catch=self.A_CATCH * c)
+        )
         assert scaled.design_capacity.item() == pytest.approx(base.design_capacity.item(), rel=1e-5)
         assert scaled.mass_balance.item() == pytest.approx(base.mass_balance.item(), rel=1e-5)
         assert base.design_capacity.item() > 0 and base.mass_balance.item() > 0
@@ -356,7 +359,9 @@ class TestRegularizersMasked:
         plain = loss_fn(**self._batch(r, dt, rain))
         padded = loss_fn(**self._batch(r_p, dt_p, rain_p))
         assert plain.design_capacity.item() > 0 and plain.mass_balance.item() > 0
-        assert padded.design_capacity.item() == pytest.approx(plain.design_capacity.item(), rel=1e-6)
+        assert padded.design_capacity.item() == pytest.approx(
+            plain.design_capacity.item(), rel=1e-6
+        )
         assert padded.mass_balance.item() == pytest.approx(plain.mass_balance.item(), rel=1e-6)
         assert padded.non_negativity.item() == pytest.approx(plain.non_negativity.item(), abs=1e-12)
 
@@ -379,7 +384,8 @@ class TestRegularizersMasked:
         base = loss_fn(**args).conductivity_smoothness.item()
         # every edge is one decade apart: mean (ln 10)^2, independent of a_ij size
         assert base == pytest.approx(torch.log(torch.tensor(10.0)).item() ** 2, rel=1e-5)
-        args["hydraulic_conductivity"] = args["hydraulic_conductivity"] * 86400.0  # any change of units
+        # any change of units of T
+        args["hydraulic_conductivity"] = args["hydraulic_conductivity"] * 86400.0
         assert loss_fn(**args).conductivity_smoothness.item() == pytest.approx(base, rel=1e-5)
 
 
@@ -441,12 +447,13 @@ class TestLeakageSink:
         h, dt = self._recession()
         h, dt = h.float(), dt.float()
         args = dict(
-            predicted_displacement_cm=torch.zeros_like(h), observed_displacement_cm=torch.zeros_like(h),
+            predicted_displacement_cm=torch.zeros_like(h),
+            observed_displacement_cm=torch.zeros_like(h),
             predicted_head_change=h, hydraulic_conductivity=torch.ones(1),
             recharge_rate=torch.zeros_like(h), design_recharge_capacity=torch.full((1,), 1e6),
             rainfall_mm=torch.zeros_like(h), adjacency=torch.zeros(1, 1), time_delta_days=dt,
             storativity=torch.tensor(self.S), recharge_area_m2=torch.ones(1),
             catchment_area_m2=torch.ones(1))
         loss_fn = CompositeARSLoss(LossWeights())
-        assert loss_fn(**args).pde.item() > 1e-7                       # no sink: recession unexplained
+        assert loss_fn(**args).pde.item() > 1e-7  # no sink: recession unexplained
         assert loss_fn(**args, leakance=torch.tensor(self.L)).pde.item() < 1e-12

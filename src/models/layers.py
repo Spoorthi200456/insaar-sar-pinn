@@ -14,12 +14,9 @@ Custom sub-layers for ARSNet (Module 2 of the blueprint):
 
 from __future__ import annotations
 
-import math
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 
 # --------------------------------------------------------------------------- #
 # CV Encoder (footprint segmentation feature extractor)

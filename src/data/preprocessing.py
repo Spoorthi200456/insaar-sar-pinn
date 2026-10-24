@@ -30,7 +30,9 @@ class NormalizationStats:
         return x * (self.std if self.std > 1e-8 else 1.0) + self.mean
 
 
-def compute_normalization_stats(x: np.ndarray, mask: np.ndarray | None = None) -> NormalizationStats:
+def compute_normalization_stats(
+    x: np.ndarray, mask: np.ndarray | None = None
+) -> NormalizationStats:
     """Mean/std over valid (unmasked) entries only."""
     if mask is not None:
         valid = x[mask.astype(bool)]
@@ -41,7 +43,9 @@ def compute_normalization_stats(x: np.ndarray, mask: np.ndarray | None = None) -
     return NormalizationStats(mean=float(np.mean(valid)), std=float(np.std(valid)))
 
 
-def interpolate_missing_1d(values: np.ndarray, valid_mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def interpolate_missing_1d(
+    values: np.ndarray, valid_mask: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Linearly interpolate missing entries of a 1D series (e.g. loss of InSAR
     coherence). Values outside the first/last valid index are filled by
