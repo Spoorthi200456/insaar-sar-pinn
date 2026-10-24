@@ -24,17 +24,42 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from src.data.dataset import build_dataloader
 from src.data.schemas import ARSDesignParameters, ARSTelemetryRecord, RainfallObservation, SARObservation
+from src.models.coupling import head_to_los_cm
 from src.models.losses import CompositeARSLoss, LossWeights
 from src.models.network import ARSNet
 
 log = structlog.get_logger(__name__)
 
 
-def make_synthetic_records(n_structures: int, n_timesteps: int = 52, seed: int = 0) -> list[ARSTelemetryRecord]:
-    """Generates physically-plausible synthetic telemetry for smoke tests / demos."""
+# Planted truths of the smoke-test generator (PROVISIONAL, illustrative values,
+# not calibrated to any real aquifer).
+SYNTH_STORATIVITY = 0.05          # S [dimensionless]
+SYNTH_SKELETAL_STORAGE = 1e-3     # S_k [dimensionless] (compliant alluvium end, so signal > noise)
+SYNTH_DRAINAGE_TIMESCALE_DAYS = 60.0  # S / L: head recession time scale [day]
+
+
+def make_synthetic_records_with_truth(
+    n_structures: int, n_timesteps: int = 52, seed: int = 0, noise_cm: float = 0.05
+) -> tuple[list[ARSTelemetryRecord], list[dict]]:
+    """
+    Synthetic telemetry plus the planted truths it was generated from.
+
+    Per structure i, weekly steps k (Δt = 7 days):
+      R_i,k = eta_i * P_k / 1000 / Δt               recharge [m/day]; eta_i = infiltrating fraction
+      S (h_k - h_{k-1}) / Δt = R_k - L h_k          backward Euler, h_0 = 0 [m]
+      d_k   = head_to_los_cm(h_k - h_0, S_k, theta_i) + N(0, noise_cm)   [cm]
+    with L = S / SYNTH_DRAINAGE_TIMESCALE_DAYS [1/day] (a linear-reservoir drain
+    so head does not rise forever) and theta_i ~ U(29, 46) deg. The coupling is
+    the model's own `head_to_los_cm` (review finding 2), so generator and model
+    cannot drift apart. Returns (records, truths), truths[i] a dict.
+    """
     rng = random.Random(seed)
     records: list[ARSTelemetryRecord] = []
+    truths: list[dict] = []
     base_time = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    dt_days = 7.0
+    s = SYNTH_STORATIVITY
+    leakance = s / SYNTH_DRAINAGE_TIMESCALE_DAYS
 
     for i in range(n_structures):
         structure_id = f"ARS-{i:04d}"
@@ -47,36 +72,63 @@ def make_synthetic_records(n_structures: int, n_timesteps: int = 52, seed: int =
             storage_volume_m3=rng.uniform(500.0, 20000.0),
             catchment_area_km2=rng.uniform(0.5, 25.0),
             design_recharge_capacity_m3_per_day=rng.uniform(10.0, 500.0),
-            biot_coefficient_alpha=rng.uniform(0.4, 0.8),
         )
+        eta = rng.uniform(0.05, 0.5)
+        theta = rng.uniform(29.0, 46.0)
 
-        true_k = rng.uniform(0.1, 5.0)
-        sar_series, rain_series = [], []
-        head = 0.0
+        timestamps, rain, recharge, head, coherence = [], [], [], [], []
+        h = 0.0
         for t in range(n_timesteps):
-            ts = base_time + timedelta(days=7 * t)
-            rainfall = max(0.0, rng.gauss(40.0, 30.0))
-            recharge = min(rainfall * 0.5, design.design_recharge_capacity_m3_per_day)
-            head = 0.9 * head + recharge / (1.0 + true_k)
-            displacement = -design.biot_coefficient_alpha * head * 0.01 + rng.gauss(0, 0.05)
-            coherence = min(1.0, max(0.0, rng.gauss(0.85, 0.15)))
+            timestamps.append(base_time + timedelta(days=dt_days * t))
+            p_mm = max(0.0, rng.gauss(40.0, 30.0))
+            r = eta * p_mm / 1000.0 / dt_days
+            if t > 0:  # h_0 = 0 is the reference acquisition
+                h = (h + dt_days * r / s) / (1.0 + dt_days * leakance / s)
+            rain.append(p_mm)
+            recharge.append(r)
+            head.append(h)
+            coherence.append(min(1.0, max(0.0, rng.gauss(0.85, 0.15))))
 
-            sar_series.append(
-                SARObservation(
-                    structure_id=structure_id,
-                    timestamp=ts,
-                    los_displacement_cm=displacement,
-                    coherence=coherence,
-                )
+        d_clean = head_to_los_cm(
+            torch.tensor([head], dtype=torch.float64),
+            torch.tensor(SYNTH_SKELETAL_STORAGE, dtype=torch.float64),
+            torch.tensor([theta], dtype=torch.float64),
+        )[0].tolist()
+        sar_series = [
+            SARObservation(
+                structure_id=structure_id,
+                timestamp=ts,
+                los_displacement_cm=d + (rng.gauss(0.0, noise_cm) if noise_cm > 0 else 0.0),
+                coherence=c,
+                incidence_angle_deg=theta,
             )
-            rain_series.append(
-                RainfallObservation(structure_id=structure_id, timestamp=ts, rainfall_mm=rainfall)
-            )
-
+            for ts, d, c in zip(timestamps, d_clean, coherence)
+        ]
+        rain_series = [
+            RainfallObservation(structure_id=structure_id, timestamp=ts, rainfall_mm=p_mm)
+            for ts, p_mm in zip(timestamps, rain)
+        ]
         records.append(
             ARSTelemetryRecord(design=design, sar_series=sar_series, rainfall_series=rain_series)
         )
-    return records
+        truths.append(
+            {
+                "structure_id": structure_id,
+                "head_m": head,
+                "recharge_m_per_day": recharge,
+                "infiltration_fraction": eta,
+                "incidence_angle_deg": theta,
+                "storativity": s,
+                "skeletal_storage": SYNTH_SKELETAL_STORAGE,
+                "leakance_per_day": leakance,
+            }
+        )
+    return records, truths
+
+
+def make_synthetic_records(n_structures: int, n_timesteps: int = 52, seed: int = 0) -> list[ARSTelemetryRecord]:
+    """Synthetic telemetry for smoke tests / demos (see `make_synthetic_records_with_truth`)."""
+    return make_synthetic_records_with_truth(n_structures, n_timesteps, seed)[0]
 
 
 def load_records_from_json(path: Path) -> list[ARSTelemetryRecord]:
@@ -169,7 +221,7 @@ def train(
                 rainfall_mm=batch["rainfall_mm"].to(device),
                 time_delta_days=batch["time_delta_days"].to(device),
                 adjacency=batch["adjacency"].to(device),
-                biot_alpha=batch["biot_alpha"].to(device),
+                incidence_angle_deg=batch["incidence_angle_deg"].to(device),
                 coherence_mask=batch["coherence_mask"].to(device),
             )
 

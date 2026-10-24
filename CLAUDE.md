@@ -34,21 +34,26 @@ textbook result each step relies on. Never skip steps.
   Derivation: plan of 2026-10-15 / commit message of the fix for findings 1 & 3.
   S is NOT identifiable from the PDE term alone ((S,T,R) → (cS,cT,cR) leaves r
   unchanged): report it as a fitted coefficient, not a measured S_y.
-- Deformation coupling: TODO — write the exact relation, the coefficient's
-  name and units (it is NOT the dimensionless Biot α if it maps head [m] to displacement [cm]).
-- LOS sign convention: positive = motion toward the satellite.
-  (provisional, confirm against data source)
-  CONFLICT, not yet resolved: `src/data/schemas.py:107` documents
-  `los_displacement_cm` as "positive = uplift", which is a vertical
-  convention, not a LOS one. Code not changed; see docs/review.md finding 2.
-  Incidence angle handling: per-structure input θ taken from the Sentinel-1
-  product metadata (roughly 29–46° in IW mode), not a constant.
-  (provisional, confirm against data source) Not yet used in code.
+- Deformation coupling (review finding 2, `src/models/coupling.py::head_to_los_cm`):
+  d_LOS [cm] = 100 · cos θ · S_k · (h − h_ref) [m], h_ref = head at the first
+  real acquisition. S_k = ρ_w g α_c b is the skeletal storage coefficient
+  (dimensionless; one global learnable value in (1e-6, 1e-2), init 1e-4).
+  NOT the Biot α (`biot_coefficient_alpha` is deprecated and unused).
+  Assumes elastic, no lag, vertical motion only, one track per series.
+  Derivation: docs/math/deformation_coupling.md. (provisional)
+- LOS sign convention: positive = motion toward the satellite (uplift > 0).
+  (provisional, confirm against data source — docs/open_questions.md OQ2)
+  `schemas.py` now documents the same convention.
+  Incidence angle: required per-observation input `incidence_angle_deg`
+  (20–50°) from the Sentinel-1 product metadata; the per-structure mean is used.
+  (provisional, OQ3)
 
 ## Units table (every physical tensor must appear here)
 | quantity | symbol | units | where |
 |---|---|---|---|
-| LOS displacement | d | cm | schemas.py |
+| LOS displacement (+ toward satellite) | d | cm | schemas.py |
+| skeletal storage coefficient (`ARSNet.skeletal_storage`) | S_k | dimensionless, (1e-6, 1e-2), init 1e-4 (provisional) | network.py |
+| radar incidence angle | θ | degrees, 20–50 | schemas.py |
 | rainfall | P | mm per InSAR interval | dataset.py |
 | design recharge capacity | Q_design | m³/day | schemas.py |
 | recharge (model output `recharge_rate`) | R | m/day — declared, not enforced (provisional; still compared with m³/day and mm in regularizers, review finding 6) | network.py |

@@ -76,7 +76,7 @@ class TestARSNet:
             rainfall_mm=batch["rainfall_mm"],
             time_delta_days=batch["time_delta_days"],
             adjacency=batch["adjacency"],
-            biot_alpha=batch["biot_alpha"],
+            incidence_angle_deg=batch["incidence_angle_deg"],
             coherence_mask=batch["coherence_mask"],
         )
         n = batch["displacement_cm"].shape[0]
@@ -93,7 +93,7 @@ class TestARSNet:
             rainfall_mm=batch["rainfall_mm"],
             time_delta_days=batch["time_delta_days"],
             adjacency=batch["adjacency"],
-            biot_alpha=batch["biot_alpha"],
+            incidence_angle_deg=batch["incidence_angle_deg"],
             coherence_mask=batch["coherence_mask"],
         )
         assert (out.hydraulic_conductivity > 0).all()
@@ -107,7 +107,7 @@ class TestARSNet:
             rainfall_mm=batch["rainfall_mm"],
             time_delta_days=batch["time_delta_days"],
             adjacency=batch["adjacency"],
-            biot_alpha=batch["biot_alpha"],
+            incidence_angle_deg=batch["incidence_angle_deg"],
             coherence_mask=batch["coherence_mask"],
         )
         assert (out.recharge_rate >= 0).all()
@@ -121,7 +121,7 @@ class TestARSNet:
             rainfall_mm=batch["rainfall_mm"],
             time_delta_days=batch["time_delta_days"],
             adjacency=batch["adjacency"],
-            biot_alpha=batch["biot_alpha"],
+            incidence_angle_deg=batch["incidence_angle_deg"],
             coherence_mask=batch["coherence_mask"],
         )
         assert out.storativity.dim() == 0
@@ -137,7 +137,7 @@ class TestARSNet:
             rainfall_mm=batch["rainfall_mm"],
             time_delta_days=batch["time_delta_days"],
             adjacency=batch["adjacency"],
-            biot_alpha=batch["biot_alpha"],
+            incidence_angle_deg=batch["incidence_angle_deg"],
             coherence_mask=batch["coherence_mask"],
         )
         # Include predicted_displacement_cm so the loss also touches

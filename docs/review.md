@@ -10,7 +10,7 @@ whether an ARS is recharging or failing?), not by file order.
 | # | Where | Short title | Status |
 |---|---|---|---|
 | 1 | `src/models/losses.py:130` | PDE residual has wrong sign — recharge acts as a sink | **Fixed** |
-| 2 | `src/models/network.py:182` | Deformation coupling: wrong sign, wrong coefficient, no LOS projection | Open |
+| 2 | `src/models/network.py:182` | Deformation coupling: wrong sign, wrong coefficient, no LOS projection | **Fixed** (review 2) |
 | 3 | `src/models/losses.py:123-125` | Storage term has no S_s and no ÷Δt | **Fixed** (integrator Δt still open) |
 | 4 | `src/data/dataset.py:214-228` | Physics graph built from minibatch composition | Open |
 | 5 | `src/models/layers.py:126-135` | GAT has no self-loop — isolated nodes get zero embedding | Open |
@@ -72,8 +72,20 @@ author's approval in plan mode before any code changes.
   to cm), project to LOS with the per-structure incidence angle, and fix the
   generator to use the same relation. Requires the LOS convention below to be
   confirmed first.
-- **Status:** Open. Provisional LOS conventions recorded in `CLAUDE.md`;
-  coupling code unchanged.
+- **Fix (review 2):** `src/models/coupling.py::head_to_los_cm`,
+  d_LOS = 100·cos θ·S_k·(h − h_ref). Global learnable S_k ∈ (1e-6, 1e-2).
+  Required `incidence_angle_deg` in `SARObservation`, one track per record.
+  The Python and TypeScript generators use the same relation; Biot α is deprecated.
+  Derivation: `docs/math/deformation_coupling.md`.
+- **Tests:** `tests/test_coupling.py` (11 tests: sign, exact units, cos θ ratio,
+  model output = shared coupling of the head increment, S_k bounds, generator =
+  coupling, schema rejects missing/out-of-range θ and mixed tracks).
+  On the pre-fix code the module does not exist (collection error). The same
+  scenarios run through the old forward pass: Δh = +1 m, α = 0.6 →
+  **d = −0.600 cm** (wrong sign, 60× the correct value at θ = 0°); no θ input,
+  so d(29°)/d(46°) = 1.0 instead of 1.259; the old generator's head only rises,
+  yet its displacement reached −0.21 cm (subsidence).
+- **Status:** Fixed.
 
 ## 3. Storage term has no S_s and no division by Δt
 

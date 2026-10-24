@@ -7,16 +7,17 @@ ARSNet: the complete multi-branch architecture from Module 2.
     u_i     = [v_i^(L) ; z_i]                    (fused representation)
     K_i     = exp(w_K^T u_i + b_K)               (positivity-constrained)
     Q_i(t)  = RechargeDecoder(u_i, R_i(t))        (non-negative via softplus)
-    d_pred_i(t) = -alpha_i * cumulative_head_proxy(Q_i(t), K_i)
+    h_i(t)  = HeadChangeIntegrator(Q_i(t), K_i)   (predicted head change [m])
+    d_pred_i(t) = 100 * cos(theta_i) * S_k * (h_i(t) - h_i(t_ref))     [cm]
 
-The last line operationalizes the poroelastic coupling
-`Δd_i(t) ≈ -alpha * Δh_i(t)` from Module 1: instead of requiring a full PDE
-solve inside the forward pass, we let the recharge decoder implicitly model
-head *changes* and pass them through a learned, K-modulated integrator to a
-predicted head-change series, then couple to displacement via `alpha`. This
-keeps `d_pred` differentiable end-to-end w.r.t. both `K` and `Q`, which is
-exactly what `losses.py::DataMisfitLoss` and `losses.py::PDEResidualLoss`
-need to backpropagate through.
+The last line is the poroelastic coupling of review finding 2
+(`src/models/coupling.py`, derivation in docs/math/deformation_coupling.md):
+a head rise lowers effective stress, the skeleton expands, the ground rises,
+and uplift is projected onto the radar line of sight (positive = toward the
+satellite, PROVISIONAL). S_k is the skeletal storage coefficient
+(dimensionless, one global learnable value); theta_i is the per-structure
+incidence angle. h is referenced to the first real acquisition because InSAR
+displacement is relative to it (finding-2 plan, Q6).
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from dataclasses import dataclass
 import torch
 import torch.nn as nn
 
+from src.models.coupling import head_to_los_cm
 from src.models.layers import (
     CVEncoder,
     HydrologicGATStack,
@@ -43,6 +45,7 @@ class ARSNetOutput:
     node_embedding: torch.Tensor              # (B, H) v_i^(L), for explainability
     temporal_embedding: torch.Tensor          # (B, D) z_i, for explainability
     storativity: torch.Tensor                 # scalar S [dimensionless], in (0, 1)
+    skeletal_storage: torch.Tensor            # scalar S_k [dimensionless], in (1e-6, 1e-2)
 
 
 class HeadChangeIntegrator(nn.Module):
@@ -136,6 +139,12 @@ class ARSNet(nn.Module):
         # leaves the residual unchanged, so report it as a fitted coefficient.
         self.storativity_logit = nn.Parameter(torch.logit(torch.tensor(0.02)))
 
+        # Skeletal storage coefficient S_k (finding 2, PROVISIONAL, open question
+        # OQ7): one global value, log10 S_k = -6 + 4*sigmoid(raw), so
+        # 1e-6 < S_k < 1e-2 (hard rock ... compliant alluvium), init 1e-4 (raw = 0).
+        # Global because per-structure S_k is not identifiable without wells.
+        self.skeletal_storage_raw = nn.Parameter(torch.tensor(0.0))
+
         self.fused_dim = fused_dim
 
     def forward(
@@ -145,7 +154,7 @@ class ARSNet(nn.Module):
         rainfall_mm: torch.Tensor,           # (B, T)
         time_delta_days: torch.Tensor,       # (B, T)
         adjacency: torch.Tensor,             # (B, B) or (1, B, B)
-        biot_alpha: torch.Tensor,            # (B,)
+        incidence_angle_deg: torch.Tensor,   # (B,) radar incidence angle [deg]
         coherence_mask: torch.Tensor | None = None,  # (B, T) bool, True == reliable
         cv_patch: torch.Tensor | None = None,         # (B, C, H, W)
     ) -> ARSNetOutput:
@@ -187,7 +196,13 @@ class ARSNet(nn.Module):
         q = self.recharge_decoder(u, rainfall_mm)  # (B, T), non-negative
 
         delta_h = self.head_integrator(q, k)  # (B, T)
-        d_pred = -biot_alpha.unsqueeze(-1) * delta_h  # (B, T)
+
+        # Reference head at the first real acquisition (first step with Δt > 0;
+        # padded steps have Δt = 0). Index 0 if a row has no real step.
+        first_real = (time_delta_days > 0).int().argmax(dim=1, keepdim=True)  # (B, 1)
+        h_ref = torch.gather(delta_h, 1, first_real)
+        s_k = self.skeletal_storage()
+        d_pred = head_to_los_cm(delta_h - h_ref, s_k, incidence_angle_deg)  # (B, T) [cm]
 
         return ARSNetOutput(
             hydraulic_conductivity=k,
@@ -197,4 +212,9 @@ class ARSNet(nn.Module):
             node_embedding=v_l,
             temporal_embedding=z,
             storativity=torch.sigmoid(self.storativity_logit),
+            skeletal_storage=s_k,
         )
+
+    def skeletal_storage(self) -> torch.Tensor:
+        """S_k [dimensionless], 1e-6 < S_k < 1e-2."""
+        return torch.pow(10.0, -6.0 + 4.0 * torch.sigmoid(self.skeletal_storage_raw))

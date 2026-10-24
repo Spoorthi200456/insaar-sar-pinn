@@ -101,6 +101,7 @@ class TestARSDataset:
             timestamp=sar[k].timestamp,
             los_displacement_cm=-14.0,
             coherence=0.9,
+            incidence_angle_deg=sar[k].incidence_angle_deg,
         )
         assert sar[k].quality_flag == DataQualityFlag.OUT_OF_BOUNDS_CLAMPED
         record = record.model_copy(update={"sar_series": sar})

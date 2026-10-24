@@ -52,7 +52,7 @@ class ARSSample:
     design_features: torch.Tensor          # (Q,)
     coordinates: torch.Tensor              # (2,) lat, lon
     design_recharge_capacity: torch.Tensor  # scalar
-    biot_alpha: torch.Tensor               # scalar
+    incidence_angle_deg: torch.Tensor      # scalar [deg], mean over the series' acquisitions
 
 
 class ARSDataset(Dataset):
@@ -160,7 +160,9 @@ class ARSDataset(Dataset):
             design_recharge_capacity=torch.tensor(
                 record.design.design_recharge_capacity_m3_per_day, dtype=torch.float32
             ),
-            biot_alpha=torch.tensor(record.design.biot_coefficient_alpha, dtype=torch.float32),
+            incidence_angle_deg=torch.tensor(
+                float(np.mean([o.incidence_angle_deg for o in sar_sorted])), dtype=torch.float32
+            ),
         )
 
     # ------------------------------------------------------------------ #
@@ -238,7 +240,7 @@ class ARSCollateFn:
             "design_recharge_capacity": torch.stack(
                 [s.design_recharge_capacity for s in batch]
             ),
-            "biot_alpha": torch.stack([s.biot_alpha for s in batch]),
+            "incidence_angle_deg": torch.stack([s.incidence_angle_deg for s in batch]),
             "adjacency": torch.from_numpy(adjacency),
         }
 

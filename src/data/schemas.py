@@ -77,7 +77,12 @@ class ARSDesignParameters(StrictModel):
     design_recharge_capacity_m3_per_day: float = Field(..., gt=0.0)
     biot_coefficient_alpha: float = Field(
         default=0.6, gt=0.0, le=1.0,
-        description="Empirical poroelastic coupling factor relating head change to subsidence.",
+        description=(
+            "DEPRECATED, unused by the model (review finding 2). The dimensionless Biot "
+            "coefficient cannot map head [m] to displacement [cm]; the model uses a "
+            "learned skeletal storage coefficient S_k instead. Kept only so existing "
+            "API payloads still validate."
+        ),
     )
 
     @field_validator("construction_date")
@@ -104,7 +109,21 @@ class SARObservation(StrictModel):
     structure_id: str = Field(..., min_length=1, max_length=128)
     timestamp: datetime
     los_displacement_cm: float = Field(
-        ..., description="Line-of-sight surface displacement, positive = uplift."
+        ...,
+        description=(
+            "Line-of-sight displacement relative to the first acquisition, "
+            "positive = motion toward the satellite (PROVISIONAL, docs/open_questions.md "
+            "OQ2; uplift gives positive values). If a product uses the opposite sign, "
+            "flip it once here at ingestion, never in the model."
+        ),
+    )
+    incidence_angle_deg: float = Field(
+        ..., ge=20.0, le=50.0,
+        description=(
+            "Radar incidence angle at the structure [deg], from the Sentinel-1 product "
+            "metadata (IW mode ~29-46 deg). Required: a silent default would hide "
+            "missing metadata (finding-2 plan Q5)."
+        ),
     )
     coherence: float = Field(..., ge=0.0, le=1.0)
     track_direction: str = Field(default="descending", pattern="^(ascending|descending)$")
@@ -198,6 +217,15 @@ class ARSTelemetryRecord(StrictModel):
                     f"Rainfall observation structure_id={obs.structure_id!r} does not match "
                     f"design.structure_id={sid!r}"
                 )
+        # One track per series (finding-2 assumption A4): ascending and descending
+        # tracks see different LOS directions, so one incidence angle per
+        # structure is meaningless if they are mixed.
+        tracks = {o.track_direction for o in self.sar_series}
+        if len(tracks) > 1:
+            raise ValueError(
+                f"sar_series for {sid!r} mixes tracks {sorted(tracks)}; submit one track "
+                "direction per record"
+            )
         return self
 
     @property

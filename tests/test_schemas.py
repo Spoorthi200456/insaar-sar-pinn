@@ -56,7 +56,7 @@ class TestSARObservation:
             structure_id="ARS-0001",
             timestamp=datetime.now(timezone.utc),
             los_displacement_cm=15.0,
-            coherence=0.9,
+            coherence=0.9, incidence_angle_deg=35.0,
         )
         assert abs(obs.los_displacement_cm) < 10.0
         assert obs.quality_flag == DataQualityFlag.OUT_OF_BOUNDS_CLAMPED
@@ -66,7 +66,7 @@ class TestSARObservation:
             structure_id="ARS-0001",
             timestamp=datetime.now(timezone.utc),
             los_displacement_cm=0.5,
-            coherence=0.3,
+            coherence=0.3, incidence_angle_deg=35.0,
         )
         assert obs.quality_flag == DataQualityFlag.LOW_COHERENCE
         assert obs.is_reliable is False
@@ -74,7 +74,7 @@ class TestSARObservation:
     def test_naive_timestamp_becomes_utc(self):
         naive = datetime(2024, 1, 1, 12, 0, 0)
         obs = SARObservation(
-            structure_id="ARS-0001", timestamp=naive, los_displacement_cm=0.1, coherence=0.9
+            structure_id="ARS-0001", timestamp=naive, los_displacement_cm=0.1, coherence=0.9, incidence_angle_deg=35.0
         )
         assert obs.timestamp.tzinfo is not None
 
@@ -84,7 +84,7 @@ class TestSARObservation:
                 structure_id="ARS-0001",
                 timestamp=datetime.now(timezone.utc),
                 los_displacement_cm=0.1,
-                coherence=1.5,
+                coherence=1.5, incidence_angle_deg=35.0,
             )
 
 
@@ -109,7 +109,7 @@ class TestARSTelemetryRecord:
             structure_id="ARS-9999",
             timestamp=datetime.now(timezone.utc),
             los_displacement_cm=0.1,
-            coherence=0.9,
+            coherence=0.9, incidence_angle_deg=35.0,
         )
         rain = RainfallObservation(
             structure_id="ARS-0001", timestamp=datetime.now(timezone.utc), rainfall_mm=10.0
@@ -121,8 +121,8 @@ class TestARSTelemetryRecord:
         design = _design()
         ts = datetime.now(timezone.utc)
         sar = [
-            SARObservation(structure_id="ARS-0001", timestamp=ts, los_displacement_cm=0.1, coherence=0.9),
-            SARObservation(structure_id="ARS-0001", timestamp=ts, los_displacement_cm=0.1, coherence=0.2),
+            SARObservation(structure_id="ARS-0001", timestamp=ts, los_displacement_cm=0.1, coherence=0.9, incidence_angle_deg=35.0),
+            SARObservation(structure_id="ARS-0001", timestamp=ts, los_displacement_cm=0.1, coherence=0.2, incidence_angle_deg=35.0),
         ]
         rain = [RainfallObservation(structure_id="ARS-0001", timestamp=ts, rainfall_mm=10.0)]
         record = ARSTelemetryRecord(design=design, sar_series=sar, rainfall_series=rain)
@@ -136,7 +136,7 @@ class TestTelemetryBatch:
         record = ARSTelemetryRecord(
             design=design,
             sar_series=[
-                SARObservation(structure_id="ARS-0001", timestamp=ts, los_displacement_cm=0.1, coherence=0.9)
+                SARObservation(structure_id="ARS-0001", timestamp=ts, los_displacement_cm=0.1, coherence=0.9, incidence_angle_deg=35.0)
             ],
             rainfall_series=[RainfallObservation(structure_id="ARS-0001", timestamp=ts, rainfall_mm=10.0)],
         )

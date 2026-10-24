@@ -20,14 +20,18 @@ export interface ARSDesignParameters {
   catchment_area_km2: number;
   construction_date?: string | null;
   design_recharge_capacity_m3_per_day: number;
-  biot_coefficient_alpha: number;
+  /** DEPRECATED, unused by the model (review finding 2). */
+  biot_coefficient_alpha?: number;
 }
 
 export interface SARObservation {
   structure_id: string;
   timestamp: string;
+  /** LOS displacement, positive = toward the satellite (PROVISIONAL). */
   los_displacement_cm: number;
   coherence: number;
+  /** Radar incidence angle [deg], 20-50, from Sentinel-1 metadata. Required. */
+  incidence_angle_deg: number;
   track_direction: "ascending" | "descending";
   quality_flag: DataQualityFlag;
 }
@@ -127,7 +131,8 @@ export type WSMessage = WSPredictionMessage | WSErrorMessage | WSHeartbeatMessag
 export interface ScenarioControls {
   numStructures: number;
   sequenceLength: number;
-  meanBiotAlpha: number;
+  /** log10 of the skeletal storage coefficient S_k (dimensionless), -6..-2. */
+  skeletalStorageLog10: number;
   meanRainfallMm: number;
   rainfallVolatility: number;
   meanDesignCapacityM3PerDay: number;

@@ -27,11 +27,23 @@ function gaussian(rng: () => number, mean: number, std: number): number {
 
 /**
  * Generates a physically-plausible synthetic `TelemetryBatch` client-side,
- * mirroring `src/training/train.py::make_synthetic_records`. Lets the
- * dashboard's control panel drive "what-if" scenarios (rainfall intensity,
- * Biot coupling, structure count) without requiring a live telemetry feed --
- * the same batch shape is sent to the real `/api/v1/predict` endpoint.
+ * mirroring `src/training/train.py::make_synthetic_records_with_truth`
+ * (same physics, different random stream). Lets the dashboard's control panel
+ * drive "what-if" scenarios (rainfall intensity, skeletal storage, structure
+ * count) without requiring a live telemetry feed -- the same batch shape is
+ * sent to the real `/api/v1/predict` endpoint.
+ *
+ * Coupling (review finding 2, must match src/models/coupling.py):
+ *   d_LOS [cm] = 100 * cos(theta) * S_k * (h - h_0) [m], positive = toward satellite.
  */
+const CM_PER_M = 100;
+const STORATIVITY = 0.05; // S, matches SYNTH_STORATIVITY
+const DRAINAGE_TIMESCALE_DAYS = 60; // S / L, matches SYNTH_DRAINAGE_TIMESCALE_DAYS
+
+export function headToLosCm(deltaHM: number, skeletalStorage: number, incidenceDeg: number): number {
+  return CM_PER_M * Math.cos((incidenceDeg * Math.PI) / 180) * skeletalStorage * deltaHM;
+}
+
 export function generateScenarioBatch(controls: ScenarioControls): TelemetryBatch {
   const rng = makeRng(controls.seed);
   const records: ARSTelemetryRecord[] = [];
@@ -40,15 +52,15 @@ export function generateScenarioBatch(controls: ScenarioControls): TelemetryBatc
 
   for (let i = 0; i < controls.numStructures; i++) {
     const structureId = `ARS-${String(i).padStart(4, "0")}`;
-    const alpha = Math.min(
-      0.95,
-      Math.max(0.1, gaussian(rng, controls.meanBiotAlpha, 0.08))
-    );
+    const skeletalStorage = Math.pow(10, controls.skeletalStorageLog10);
+    const incidenceDeg = 29 + 17 * rng();
+    const eta = 0.05 + 0.45 * rng(); // infiltrating fraction of rainfall
     const designCapacity = Math.max(
       5,
       gaussian(rng, controls.meanDesignCapacityM3PerDay, controls.meanDesignCapacityM3PerDay * 0.3)
     );
-    const trueK = Math.max(0.05, gaussian(rng, 1.5, 1.0));
+    const dtDays = 7;
+    const leakance = STORATIVITY / DRAINAGE_TIMESCALE_DAYS; // L [1/day]
 
     const sarSeries: SARObservation[] = [];
     const rainfallSeries: RainfallObservation[] = [];
@@ -60,9 +72,12 @@ export function generateScenarioBatch(controls: ScenarioControls): TelemetryBatc
         0,
         gaussian(rng, controls.meanRainfallMm, controls.rainfallVolatility)
       );
-      const recharge = Math.min(rainfall * 0.5, designCapacity);
-      head = 0.9 * head + recharge / (1 + trueK);
-      const displacement = -alpha * head * 0.01 + gaussian(rng, 0, 0.05);
+      const recharge = (eta * rainfall) / 1000 / dtDays; // R [m/day]
+      if (t > 0) {
+        // backward Euler of S dh/dt = R - L h, h_0 = 0
+        head = (head + (dtDays * recharge) / STORATIVITY) / (1 + (dtDays * leakance) / STORATIVITY);
+      }
+      const displacement = headToLosCm(head, skeletalStorage, incidenceDeg) + gaussian(rng, 0, 0.05);
       const coherence = Math.min(1, Math.max(0, gaussian(rng, 0.85, 0.15)));
 
       sarSeries.push({
@@ -70,6 +85,7 @@ export function generateScenarioBatch(controls: ScenarioControls): TelemetryBatc
         timestamp: ts,
         los_displacement_cm: displacement,
         coherence,
+        incidence_angle_deg: incidenceDeg,
         track_direction: "descending",
         quality_flag: "ok",
       });
@@ -92,7 +108,6 @@ export function generateScenarioBatch(controls: ScenarioControls): TelemetryBatc
         catchment_area_km2: Math.max(0.2, gaussian(rng, 6, 4)),
         construction_date: null,
         design_recharge_capacity_m3_per_day: designCapacity,
-        biot_coefficient_alpha: alpha,
       },
       sar_series: sarSeries,
       rainfall_series: rainfallSeries,
@@ -110,7 +125,7 @@ export function generateScenarioBatch(controls: ScenarioControls): TelemetryBatc
 export const DEFAULT_SCENARIO: ScenarioControls = {
   numStructures: 24,
   sequenceLength: 52,
-  meanBiotAlpha: 0.6,
+  skeletalStorageLog10: -3,
   meanRainfallMm: 40,
   rainfallVolatility: 25,
   meanDesignCapacityM3PerDay: 150,

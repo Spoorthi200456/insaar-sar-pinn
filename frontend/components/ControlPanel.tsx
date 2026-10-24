@@ -25,12 +25,12 @@ const SLIDERS: SliderConfig[] = [
   { key: "numStructures", label: "Structures in batch", min: 4, max: 80, step: 1 },
   { key: "sequenceLength", label: "InSAR acquisitions (weeks)", min: 8, max: 104, step: 1 },
   {
-    key: "meanBiotAlpha",
-    label: "Mean Biot coupling (\u03b1)",
-    min: 0.1,
-    max: 0.95,
-    step: 0.01,
-    format: (v) => v.toFixed(2),
+    key: "skeletalStorageLog10",
+    label: "Skeletal storage S_k (log\u2081\u2080)",
+    min: -6,
+    max: -2,
+    step: 0.1,
+    format: (v) => `1e${v.toFixed(1)}`,
   },
   {
     key: "meanRainfallMm",

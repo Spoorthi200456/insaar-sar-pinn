@@ -54,7 +54,7 @@ def build_dummy_inputs(
         "rainfall_mm": torch.rand(num_structures, sequence_length, generator=generator) * 50.0,
         "time_delta_days": torch.full((num_structures, sequence_length), 7.0),
         "adjacency": adjacency,
-        "biot_alpha": torch.rand(num_structures, generator=generator) * 0.4 + 0.4,
+        "incidence_angle_deg": torch.rand(num_structures, generator=generator) * 17.0 + 29.0,
         "coherence_mask": torch.ones(num_structures, sequence_length, dtype=torch.bool),
     }
 
@@ -77,7 +77,7 @@ class ARSNetONNXWrapper(torch.nn.Module):
         rainfall_mm: torch.Tensor,
         time_delta_days: torch.Tensor,
         adjacency: torch.Tensor,
-        biot_alpha: torch.Tensor,
+        incidence_angle_deg: torch.Tensor,
         coherence_mask: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         out = self.model(
@@ -86,7 +86,7 @@ class ARSNetONNXWrapper(torch.nn.Module):
             rainfall_mm=rainfall_mm,
             time_delta_days=time_delta_days,
             adjacency=adjacency,
-            biot_alpha=biot_alpha,
+            incidence_angle_deg=incidence_angle_deg,
             coherence_mask=coherence_mask,
         )
         return (
@@ -122,7 +122,7 @@ def export_to_onnx(
         "rainfall_mm": {0: "num_structures", 1: "sequence_length"},
         "time_delta_days": {0: "num_structures", 1: "sequence_length"},
         "adjacency": {0: "num_structures", 1: "num_structures"},
-        "biot_alpha": {0: "num_structures"},
+        "incidence_angle_deg": {0: "num_structures"},
         "coherence_mask": {0: "num_structures", 1: "sequence_length"},
         "hydraulic_conductivity": {0: "num_structures"},
         "recharge_rate": {0: "num_structures", 1: "sequence_length"},

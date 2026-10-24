@@ -133,7 +133,7 @@ class InferenceEngine:
             "rainfall_mm": batch["rainfall_mm"].numpy().astype(np.float32),
             "time_delta_days": batch["time_delta_days"].numpy().astype(np.float32),
             "adjacency": batch["adjacency"].numpy().astype(np.float32),
-            "biot_alpha": batch["biot_alpha"].numpy().astype(np.float32),
+            "incidence_angle_deg": batch["incidence_angle_deg"].numpy().astype(np.float32),
             "coherence_mask": batch["coherence_mask"].numpy().astype(bool),
         }
         outputs = self._session.run(None, feed)
@@ -148,7 +148,7 @@ class InferenceEngine:
                 rainfall_mm=batch["rainfall_mm"],
                 time_delta_days=batch["time_delta_days"],
                 adjacency=batch["adjacency"],
-                biot_alpha=batch["biot_alpha"],
+                incidence_angle_deg=batch["incidence_angle_deg"],
                 coherence_mask=batch["coherence_mask"],
             )
         return {
@@ -183,7 +183,7 @@ class InferenceEngine:
                         rainfall_mm=batch["rainfall_mm"],
                         time_delta_days=batch["time_delta_days"],
                         adjacency=batch["adjacency"],
-                        biot_alpha=batch["biot_alpha"],
+                        incidence_angle_deg=batch["incidence_angle_deg"],
                         coherence_mask=batch["coherence_mask"],
                     )
                     samples.append(out.recharge_rate.numpy())
@@ -270,7 +270,7 @@ class InferenceEngine:
             rainfall_mm=rainfall,
             time_delta_days=batch["time_delta_days"],
             adjacency=batch["adjacency"],
-            biot_alpha=batch["biot_alpha"],
+            incidence_angle_deg=batch["incidence_angle_deg"],
             coherence_mask=batch["coherence_mask"],
         )
         target = out.recharge_rate[idx].mean()
