@@ -42,6 +42,27 @@ below its design rate. The ratio is dimensionless, so the penalty does not depen
 unit of area or volume (tested: rescaling A, A_catch and Q_design together by 37 leaves it
 unchanged).
 
+### Seasonal average (author decision 2, PROVISIONAL, OQ19)
+
+Design capacity is treated as a **soft limit on the seasonal-average recharge**, not a
+ceiling at every satellite pass. *In plain English:* a structure may briefly take in more
+than its design rate during a big storm. What should not happen is that, averaged over a
+whole monsoon, it recharges more than it was designed for.
+
+At step k the penalty uses
+V̄_k = Σ_j w_kj · R_j · A / Σ_j w_kj, with w_kj = Δt_j for the real intervals j ≤ k
+that end less than **122 days** (June–September) before interval k ends, and 0 otherwise.
+Units: (day · m³/day)/day = m³/day ✓.
+Penalty: max(0, V̄_k / Q_design − 1)², averaged over real steps. It is still dimensionless,
+and still "soft": a quadratic penalty, not a constraint.
+
+Tests (`tests/test_losses.py::TestSeasonalCapacity`):
+- One 12-day pass at 2× design within a season averaging ≤ 75 m³/day gives penalty 0. The
+  old per-pass rule gave 0.10.
+- A sustained 1.5× design gives (0.5)² at every step.
+- A hand-computed time-weighted window with gaps of 100/100/24 days gives
+  (4 + 0.25 + 0)/3.
+
 ## Step 3. Mass balance (dimensionless)
 
 Water recharged over the series: V_rech = Σ_k R_k · A · Δt_k. Units: m/day · m² · day = m³ ✓.

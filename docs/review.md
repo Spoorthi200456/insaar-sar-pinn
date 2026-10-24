@@ -334,7 +334,7 @@ failed before the fix; see each commit message for the before/after output.
 | 28 | `src/models/layers.py::CVEncoder` | CV branch unused by any training, demo or test path | Open |
 | 29 | `src/models/losses.py::CompositeARSLoss` | Total loss adds (m/day)², cm² and m²: physics weight ≈ 1e-6 of data | **Fixed** |
 | 30 | `src/models/layers.py::RechargeDecoder` | Decoders forget which structure they are decoding: R identical across structures | **Fixed** |
-| 31 | `src/models/losses.py` (design-capacity hinge) | Per-step capacity ceiling vs peak recharge above an average-based capacity | Open (OQ19) |
+| 31 | `src/models/losses.py` (design-capacity hinge) | Per-step capacity ceiling vs peak recharge above an average-based capacity | **Fixed** (author decision 2) |
 | 32 | `src/models/network.py` (global scalars) | S_k, S, L learn at the network's lr, too slow to cross their range | **Fixed** (author decision 1, after run 1) |
 
 ## 11. Flow equation has no sink
@@ -496,7 +496,13 @@ failed before the fix; see each commit message for the before/after output.
 - **Question:** if Q_design is a seasonal or annual average, the hinge should
   apply to the mean over a season, not to each step. If it is a hard
   hydraulic ceiling, the simulator was unrealistic. That is a definition for
-  the author (OQ19). Not changed.
+  the author (OQ19).
+- **Fixed by author decision 2 (2026-10-24):** the hinge now applies to the
+  Δt-weighted 122-day (monsoon-season) mean of R·A, a soft limit on the
+  seasonal average. Tests: `tests/test_losses.py::TestSeasonalCapacity` (3).
+  Before: 2 failed (a single 2× pass in a 75 m³/day season gave **0.10**;
+  `CAPACITY_WINDOW_DAYS` did not exist). The sustained-exceedance test passed
+  before as well, as a guard. After: 3 passed.
 
 ## 32. Global physical scalars learn too slowly (open, diagnosed)
 

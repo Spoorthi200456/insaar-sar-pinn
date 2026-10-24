@@ -62,6 +62,7 @@ textbook result each step relies on. Never skip steps.
 | structure recharge area (`effective_recharge_area_m2`) | A | m² (provisional default V/h, OQ9) | schemas.py |
 | catchment area | A_catch | m² in tensors (km² in schema) | dataset.py |
 | runoff coefficient (`RUNOFF_COEFFICIENT`) | c_r | dimensionless, 0.3 (provisional, OQ10) | losses.py |
+| design-capacity averaging window (`CAPACITY_WINDOW_DAYS`) | — | days, 122 (one June–Sept monsoon). Q_design is a SOFT limit on the seasonal-average R·A, not a per-pass ceiling (author decision 2; provisional, OQ19) | losses.py |
 | transmissivity (model output `hydraulic_conductivity`, interpreted as T in form (b)) | T = K·b | m²/day (provisional) | network.py |
 | storativity (`ARSNet.storativity_logit` → sigmoid) | S | dimensionless, in (0, 1), init 0.02 (provisional) | network.py |
 | head (model output `predicted_head_change`) | h | m, relative to the first real acquisition; h_k = h_{k−1} + Δt_k·v_k (docs/math/head_integrator.md) | network.py |

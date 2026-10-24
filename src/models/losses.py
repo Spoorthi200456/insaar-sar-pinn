@@ -29,6 +29,11 @@ MM_PER_M = 1000.0
 # area, so a dry series (no inflow) still gives a finite, dimensionless ratio.
 _MASS_BALANCE_FLOOR_M = 1e-3
 
+# Design capacity is a SOFT limit on the seasonal-average recharge (author
+# decision 2, review finding 31): averaging window = one monsoon season,
+# June-September = 122 days. PROVISIONAL (docs/open_questions.md OQ19).
+CAPACITY_WINDOW_DAYS = 122.0
+
 # Characteristic scales for the dimensionless total loss (review finding 29,
 # PROVISIONAL, docs/open_questions.md OQ18). Each squared physical term is
 # divided by its scale squared, so one scale of error costs one unit of weight.
@@ -268,7 +273,22 @@ class CompositeARSLoss(nn.Module):
         area = recharge_area_m2.unsqueeze(-1)  # (B, 1) m²
         volume_rate = recharge_rate * area  # (B, T) m³/day
         capacity = design_recharge_capacity.unsqueeze(-1)  # (B, 1) m³/day
-        design_capacity_penalty = torch.clamp(volume_rate / capacity - 1.0, min=0.0) ** 2
+        # Seasonal mean (decision 2): Vbar_k = Δt-weighted mean of R·A over the
+        # real intervals j <= k with t_k - t_j < CAPACITY_WINDOW_DAYS (t = elapsed
+        # real time at the end of each interval).
+        dt_real = time_delta_days * valid_f  # (B, T)
+        t_end = torch.cumsum(dt_real, dim=1)  # (B, T) day
+        lag = t_end.unsqueeze(2) - t_end.unsqueeze(1)  # (B, k, j)
+        causal = torch.tril(torch.ones(t, t, dtype=torch.bool, device=lag.device))
+        in_window = causal & (lag < CAPACITY_WINDOW_DAYS) & valid_mask.unsqueeze(1)
+        weight = in_window.float() * dt_real.unsqueeze(1)  # (B, k, j) day
+        weight_sum = weight.sum(dim=2)
+        seasonal_volume_rate = torch.where(
+            weight_sum > 0,
+            (weight * volume_rate.unsqueeze(1)).sum(dim=2) / weight_sum.clamp_min(_EPS),
+            volume_rate,  # e.g. a single real step with Δt = 0
+        )  # (B, T) m³/day
+        design_capacity_penalty = torch.clamp(seasonal_volume_rate / capacity - 1.0, min=0.0) ** 2
         design_capacity_loss = _seed_mean_over_valid_steps(design_capacity_penalty)
 
         # Inert while R comes from a softplus (R >= 0 by construction); kept as a

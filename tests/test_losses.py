@@ -546,3 +546,54 @@ class TestTotalLossIsDimensionless:
         out = CompositeARSLoss(w, residual_scale_m_per_day=sigma_r)(**args)
         assert out.pde.item() == pytest.approx(sigma_r**2, rel=1e-4)  # breakdown in (m/day)²
         assert out.total.item() == pytest.approx(1.0, rel=1e-4)  # total dimensionless
+
+
+class TestSeasonalCapacity:
+    """
+    Author decision 2 (review finding 31, OQ19): the design capacity Q_design is
+    a SOFT limit on the seasonal-average recharge, not a ceiling at every
+    satellite pass. Penalty at step k: max(0, Vbar_k / Q_design - 1)², with Vbar_k
+    the Δt-weighted mean of R·A [m³/day] over the real intervals ending in the
+    preceding CAPACITY_WINDOW_DAYS (one monsoon season, PROVISIONAL).
+    """
+
+    def _batch(self, volume_rate, dt, q=100.0, area=1.0):
+        r = torch.tensor([volume_rate]) / area
+        t = r.shape[1]
+        return dict(
+            predicted_displacement_cm=torch.zeros(1, t),
+            observed_displacement_cm=torch.zeros(1, t),
+            predicted_head_change=torch.zeros(1, t),
+            hydraulic_conductivity=torch.ones(1),
+            recharge_rate=r,
+            design_recharge_capacity=torch.tensor([q]),
+            rainfall_mm=torch.full((1, t), 1e6),
+            adjacency=torch.zeros(1, 1),
+            time_delta_days=torch.tensor([dt]),
+            storativity=torch.tensor(0.05),
+            recharge_area_m2=torch.tensor([area]),
+            catchment_area_m2=torch.tensor([1.0]),
+        )
+
+    def test_short_peak_above_capacity_is_allowed_if_season_average_is_below(self):
+        vol = [50.0] * 10
+        vol[5] = 200.0  # one 12-day pass at 2x design; season mean stays <= 75 m3/day
+        out = CompositeARSLoss(LossWeights())(**self._batch(vol, [12.0] * 10))
+        assert out.design_capacity.item() == 0.0
+
+    def test_sustained_exceedance_is_penalised(self):
+        out = CompositeARSLoss(LossWeights())(**self._batch([150.0] * 12, [12.0] * 12))
+        assert out.design_capacity.item() == pytest.approx((1.5 - 1.0) ** 2, rel=1e-5)
+
+    def test_season_mean_is_time_weighted_and_windowed(self):
+        from src.models.losses import CAPACITY_WINDOW_DAYS
+
+        assert CAPACITY_WINDOW_DAYS == pytest.approx(122.0)
+        # gaps 100, 100, 24 days; volumes 300, 0, 300 m3/day
+        # step 0: window holds step 0 only            -> 300 -> (3-1)^2 = 4
+        # step 1: steps 0,1 (100 d apart)             -> (300*100 + 0*100)/200 = 150 -> 0.25
+        # step 2: steps 1,2 (step 0 is 124 d earlier) -> (0*100 + 300*24)/124 = 58.06 -> 0
+        out = CompositeARSLoss(LossWeights())(
+            **self._batch([300.0, 0.0, 300.0], [100.0, 100.0, 24.0])
+        )
+        assert out.design_capacity.item() == pytest.approx((4.0 + 0.25 + 0.0) / 3, rel=1e-5)
