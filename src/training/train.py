@@ -138,6 +138,29 @@ def make_synthetic_records(
     return make_synthetic_records_with_truth(n_structures, n_timesteps, seed)[0]
 
 
+# Author decision 1 (review 2, finding 32), made AFTER the failed pre-registered
+# known-answer run 1: the global physical constants are single bounded scalars
+# that must be able to cross their whole range (raw in [-4, 4]) within a run.
+# Adam moves a parameter at most ~lr per step, so at the network learning rate
+# (3e-4 .. 1e-3) they barely move (S_k: 0.36 of the ~2.5 needed in run 1b).
+GLOBAL_SCALARS = ("storativity_logit", "skeletal_storage_raw", "leakance_raw")
+GLOBAL_SCALAR_LR = 0.02
+
+
+def build_optimizer(model: torch.nn.Module, lr: float, weight_decay: float) -> AdamW:
+    """AdamW with the network weights at `lr` and the global scalars at GLOBAL_SCALAR_LR
+    (no weight decay on them: decay would pull S, S_k, L toward an arbitrary value)."""
+    named = {n: p for n, p in model.named_parameters() if p.requires_grad}
+    scalars = [p for n, p in named.items() if n in GLOBAL_SCALARS]
+    others = [p for n, p in named.items() if n not in GLOBAL_SCALARS]
+    return AdamW(
+        [
+            {"params": others, "lr": lr, "weight_decay": weight_decay},
+            {"params": scalars, "lr": GLOBAL_SCALAR_LR, "weight_decay": 0.0},
+        ]
+    )
+
+
 def load_records_from_json(path: Path) -> list[ARSTelemetryRecord]:
     raw = json.loads(path.read_text())
     return [ARSTelemetryRecord.model_validate(item) for item in raw]
@@ -200,6 +223,7 @@ def train(
     lr: float = 3e-4,
     checkpoint_path: Path = Path("checkpoints/ars_net.pt"),
     device: str | None = None,
+    num_workers: int = 2,
 ) -> None:
     device = resolve_device(device)
     log.info("training.start", n_records=len(records), device=device, epochs=epochs)
@@ -209,12 +233,12 @@ def train(
         batch_size=min(batch_size, len(records)),
         sequence_length=sequence_length,
         shuffle=True,
-        num_workers=2,
+        num_workers=num_workers,
     )
 
     model = ARSNet(design_feature_dim=3).to(device)
     loss_fn = CompositeARSLoss(LossWeights())
-    optimizer = AdamW(model.parameters(), lr=lr, weight_decay=1e-5)
+    optimizer = build_optimizer(model, lr=lr, weight_decay=1e-5)
     scheduler = CosineAnnealingLR(optimizer, T_max=epochs)
 
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)

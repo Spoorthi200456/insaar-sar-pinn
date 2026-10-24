@@ -335,7 +335,7 @@ failed before the fix; see each commit message for the before/after output.
 | 29 | `src/models/losses.py::CompositeARSLoss` | Total loss adds (m/day)², cm² and m²: physics weight ≈ 1e-6 of data | **Fixed** |
 | 30 | `src/models/layers.py::RechargeDecoder` | Decoders forget which structure they are decoding: R identical across structures | **Fixed** |
 | 31 | `src/models/losses.py` (design-capacity hinge) | Per-step capacity ceiling vs peak recharge above an average-based capacity | Open (OQ19) |
-| 32 | `src/models/network.py` (global scalars) | S_k, S, L learn at the network's lr, too slow to cross their range | Open (diagnosed only) |
+| 32 | `src/models/network.py` (global scalars) | S_k, S, L learn at the network's lr, too slow to cross their range | **Fixed** (author decision 1, after run 1) |
 
 ## 11. Flow equation has no sink
 
@@ -508,8 +508,12 @@ failed before the fix; see each commit message for the before/after output.
 - **Evidence a fix works:** diagnostic run 2 (lr 0.02 for the three scalars,
   declared before running) fitted the data to the noise level, with ranking
   ρ 0.95 and AUROC 1.00.
-- **Not changed in `src/`:** the change was chosen after seeing a failed
-  pre-registered test. The author decides whether `train.py` adopts it.
+- **Fixed by author decision 1 (2026-10-24), after the failed run 1:**
+  `train.build_optimizer` gives `storativity_logit`, `skeletal_storage_raw`
+  and `leakance_raw` lr 0.02 with no weight decay, and the network weights
+  their usual lr. `train.py` and the demo use it. Run 1b stays the official
+  pre-registered result. Tests: `tests/test_training.py` (3). Before: 3
+  failed (no `build_optimizer` / `GLOBAL_SCALAR_LR`). After: 3 passed.
 
 ## 21–28. Open findings (documented, not fixed)
 

@@ -48,7 +48,10 @@ warnings.filterwarnings("ignore", message=r".*protected namespace.*")
 from src.data.dataset import ARSDataset, make_collate_fn  # noqa: E402
 from src.models.losses import CompositeARSLoss, LossWeights  # noqa: E402
 from src.models.network import ARSNet  # noqa: E402
-from src.training.train import make_synthetic_records_with_truth  # noqa: E402
+from src.training.train import (  # noqa: E402
+    build_optimizer,
+    make_synthetic_records_with_truth,
+)
 
 TAG = "[SYNTHETIC DATA]"
 SEED = 0
@@ -201,7 +204,7 @@ def main() -> None:
     model = ARSNet(design_feature_dim=3)
     weights = LossWeights()
     loss_fn = CompositeARSLoss(weights)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-5)
+    optimizer = build_optimizer(model, lr=LR, weight_decay=1e-5)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
 
     history: dict[str, list[float]] = {key: [] for key, _, _ in TERMS}
