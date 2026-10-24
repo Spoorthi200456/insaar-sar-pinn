@@ -29,7 +29,7 @@ import torch
 from src.data.dataset import ARSDataset, make_collate_fn
 from src.data.schemas import ARSTelemetryRecord, GraphEdge, StructurePrediction
 from src.models.losses import pde_residual
-from src.models.network import ARSNet
+from src.models.network import ARSNet, latent_drift
 
 logger = logging.getLogger(__name__)
 
@@ -363,8 +363,12 @@ class InferenceEngine:
         }
 
         with torch.no_grad():
-            embedding = out.node_embedding[idx]
-            latent_drift = float(torch.norm(embedding - embedding.mean()).item())
+            # Drift against the TRAINING reference (finding 23); None without one.
+            drift = None
+            if model.has_embedding_reference():
+                drift = latent_drift(
+                    out.node_embedding[idx], model.embedding_mean, model.embedding_std
+                )
 
             # Same residual the model is trained on (losses.pde_residual), [m/day].
             residual, valid = pde_residual(
@@ -381,6 +385,6 @@ class InferenceEngine:
 
         return {
             "feature_attributions": attributions,
-            "latent_drift_score": latent_drift,
+            "latent_drift_score": drift,
             "pde_residual_norm": pde_residual_norm,
         }

@@ -93,6 +93,17 @@ class HeadChangeIntegrator(nn.Module):
         return torch.cumsum(increment, dim=1)
 
 
+def latent_drift(embedding: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> float:
+    """
+    RMS z-score of one node embedding against the training reference (review
+    finding 23): sqrt(mean_j ((e_j - mu_j) / sigma_j)^2). Dimensionless; 0 = the
+    average training structure, ~1 = typical spread, >> 1 = unlike anything
+    seen in training. docs/math/latent_drift.md.
+    """
+    z = (embedding - mean) / std
+    return float(torch.sqrt(torch.mean(z**2)))
+
+
 class ARSNet(nn.Module):
     def __init__(
         self,
@@ -168,6 +179,14 @@ class ARSNet(nn.Module):
 
         self.fused_dim = fused_dim
 
+        # Training reference for latent drift (finding 23): per-component mean
+        # and std of node embeddings over the TRAINING split, set by train().
+        # count = 0 means "no reference" (e.g. an untrained model).
+        h = self.gat_stack.output_dim
+        self.register_buffer("embedding_mean", torch.zeros(h))
+        self.register_buffer("embedding_std", torch.ones(h))
+        self.register_buffer("embedding_reference_count", torch.tensor(0))
+
     def forward(
         self,
         design_features: torch.Tensor,  # (B, design_feature_dim)
@@ -238,6 +257,16 @@ class ARSNet(nn.Module):
     def leakance(self) -> torch.Tensor:
         """L [1/day], 1e-6 < L < 1e-1."""
         return torch.pow(10.0, -6.0 + 5.0 * torch.sigmoid(self.leakance_raw))
+
+    @torch.no_grad()
+    def set_embedding_reference(self, embeddings: torch.Tensor) -> None:
+        """embeddings: (N, H) node embeddings of the training structures."""
+        self.embedding_mean.copy_(embeddings.mean(dim=0))
+        self.embedding_std.copy_(embeddings.std(dim=0, unbiased=False).clamp_min(1e-6))
+        self.embedding_reference_count.fill_(int(embeddings.shape[0]))
+
+    def has_embedding_reference(self) -> bool:
+        return int(self.embedding_reference_count) > 0
 
     def skeletal_storage(self) -> torch.Tensor:
         """S_k [dimensionless], 1e-6 < S_k < 1e-2."""

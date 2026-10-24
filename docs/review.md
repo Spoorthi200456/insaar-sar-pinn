@@ -326,7 +326,7 @@ failed before the fix; see each commit message for the before/after output.
 | 20 | `src/models/network.py` (recharge decoder) | R starts at ~0.7 m/day (700 mm/day): not non-dimensionalised | **Fixed** |
 | 21 | `src/data/schemas.py::SARObservation` | ±10 cm bound applied to *cumulative* displacement | **Fixed** (review 3) |
 | 22 | `src/data/preprocessing.py::time_deltas_days` | Δt at step 0 is fabricated (copied from step 1) | **Fixed** (review 3) |
-| 23 | `src/backend/inference_engine.py::explain` | `latent_drift_score` does not measure drift | Open |
+| 23 | `src/backend/inference_engine.py::explain` | `latent_drift_score` does not measure drift | **Fixed** (review 3) |
 | 24 | `src/training/train.py` | "Best" checkpoint chosen on training loss; no validation split | **Fixed** (review 3) |
 | 25 | `src/models/losses.py`, `train.py` | Well heads (`well_series`) never reach the loss | **Fixed** (author decision 4) |
 | 26 | `src/data/schemas.py::RainfallObservation` | Rain > 1000 mm silently clamped, no flag | Open (low) |
@@ -554,7 +554,11 @@ failed before the fix; see each commit message for the before/after output.
 - **23. `latent_drift_score`** is ‖e − mean(e)‖ over the components of one
   node embedding: a spread, not a drift against any reference. It should be
   renamed or redefined against a training-time reference. It is an API field,
-  so it is left for the author.
+  so it is left for the author. **Fixed in review 3 (author request):** RMS
+  z-score against per-component mean/std of the TRAINING-split embeddings,
+  stored in the checkpoint by `train()`; `null` without a reference. See
+  `docs/math/latent_drift.md`. Tests: `tests/test_latent_drift.py` (4; before:
+  4 failed).
 - **24. No validation split.** `train.py` saves the checkpoint with the lowest
   *training* loss. No hold-out structures or time window, so overfitting is
   invisible. **Fixed in review 3:** `src/data/splits.py` splits by connected

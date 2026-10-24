@@ -400,6 +400,22 @@ def train(
     model.load_state_dict(checkpoint["model_state_dict"])
     test_loss = evaluate(model, loss_fn, test_records, sequence_length, design_stats, device)
     checkpoint["test_loss"] = test_loss
+    # Training reference for latent drift (finding 23): embeddings of the
+    # TRAINING structures under the selected weights.
+    model.eval()
+    with torch.no_grad():
+        tb = full_batch(train_records, sequence_length, design_stats)
+        emb = model(
+            design_features=tb["design_features"].to(device),
+            displacement_cm=tb["displacement_cm"].to(device),
+            rainfall_mm=tb["rainfall_mm"].to(device),
+            time_delta_days=tb["time_delta_days"].to(device),
+            adjacency=tb["adjacency"].to(device),
+            incidence_angle_deg=tb["incidence_angle_deg"].to(device),
+            coherence_mask=tb["coherence_mask"].to(device),
+        ).node_embedding
+    model.set_embedding_reference(emb)
+    checkpoint["model_state_dict"] = model.state_dict()
     torch.save(checkpoint, checkpoint_path)
     log.info(
         "training.complete",

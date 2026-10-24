@@ -392,5 +392,13 @@ class PredictionResponse(StrictModel):
 class ExplainabilityResponse(StrictModel):
     structure_id: str
     feature_attributions: dict[str, float]
-    latent_drift_score: float = Field(..., ge=0.0)
+    latent_drift_score: float | None = Field(
+        ...,
+        ge=0.0,
+        description=(
+            "RMS z-score of the structure's node embedding against the training-split "
+            "reference (0 = typical of training, >> 1 = unlike training). None when the "
+            "model has no training reference (review finding 23)."
+        ),
+    )
     pde_residual_norm: float = Field(..., ge=0.0)

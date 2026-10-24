@@ -17,6 +17,7 @@ marked "check against your edition".
 | [validation_split.md](validation_split.md) | Train / validation / test split by structure group | 24 |
 | [data_quality_bounds.md](data_quality_bounds.md) | Per-interval displacement bound; flagged rainfall clamp | 21, 26 |
 | [time_intervals.md](time_intervals.md) | The first acquisition has no interval (Δt₀ = 0) | 22 |
+| [latent_drift.md](latent_drift.md) | Drift score against the training reference | 23 |
 
 The governing equations used by the code are summarised in `CLAUDE.md` →
 "Governing physics"; these notes are the full derivations behind it.

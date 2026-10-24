@@ -107,7 +107,8 @@ export interface PredictionResponse {
 export interface ExplainabilityResponse {
   structure_id: string;
   feature_attributions: Record<string, number>;
-  latent_drift_score: number;
+  /** RMS z-score vs the training reference; null if the model has none. */
+  latent_drift_score: number | null;
   pde_residual_norm: number;
 }
 

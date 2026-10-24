@@ -107,8 +107,14 @@ export default function ExplainabilityPanel({ structureId, batch }: Explainabili
         />
         <DiagnosticStat
           label="Latent drift score"
-          value={result.latent_drift_score.toFixed(4)}
-          hint="Embedding deviation from batch norm"
+          value={
+            result.latent_drift_score === null ? "n/a" : result.latent_drift_score.toFixed(2)
+          }
+          hint={
+            result.latent_drift_score === null
+              ? "No training reference in this model"
+              : "RMS z-score vs training structures (0 = typical, >3 = unusual)"
+          }
         />
       </div>
 
