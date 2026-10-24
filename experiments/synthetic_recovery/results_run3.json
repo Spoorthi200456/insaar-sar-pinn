@@ -1,0 +1,101 @@
+{
+  "oracle_median_rel_err": 0.06051644644600922,
+  "oracle_median_rel_err_hard_rock": 15.129111611502411,
+  "thresholds": {
+    "spearman_A": 0.7,
+    "auroc_A": 0.85,
+    "median_rel_err_B": 0.3
+  },
+  "truth": {
+    "S": 0.05,
+    "S_k": 0.005,
+    "L": 0.0008333333333333334
+  },
+  "scenarios": {
+    "A_insar_only": {
+      "spearman": 0.95,
+      "auroc": 1.0,
+      "median_rel_err_working": 0.9531584304826919,
+      "S_fit": 0.0032156710512936115,
+      "S_k_fit": 0.008622769266366959,
+      "L_fit": 7.170269964262843e-05,
+      "seconds": 80.9,
+      "diagnostics": {
+        "data_rmse_cm": 0.2909702927611973,
+        "data_rmse_vs_clean_cm": 0.0956564160101535,
+        "pde_rms_m_per_day": 1.1891623210987812e-05,
+        "design_capacity_penalty": 0.0,
+        "mass_balance_penalty": 0.0,
+        "head_fit_over_true_scale": 0.5671778764161995,
+        "spearman_head_amplitude": 0.9470588235294116,
+        "spearman_rfit_vs_capacity_flux": 0.1264705882352941,
+        "r_fit_cv_across_structures": 0.50969009840135,
+        "r_true_cv_across_structures": 0.7540248689698357
+      }
+    },
+    "B_oracle_S_Sk": {
+      "spearman": 0.8117647058823528,
+      "auroc": 0.9,
+      "median_rel_err_working": 0.4157636252715387,
+      "S_fit": 0.05000000074505806,
+      "S_k_fit": 0.0050000036135315895,
+      "L_fit": 0.0005235686548985541,
+      "seconds": 81.7,
+      "diagnostics": {
+        "data_rmse_cm": 0.37474240596185276,
+        "data_rmse_vs_clean_cm": 0.24429947835333435,
+        "pde_rms_m_per_day": 1.8084960357074743e-05,
+        "design_capacity_penalty": 0.0036489611957222223,
+        "mass_balance_penalty": 0.0,
+        "head_fit_over_true_scale": 0.6913126935894722,
+        "spearman_head_amplitude": 0.8705882352941177,
+        "spearman_rfit_vs_capacity_flux": 0.02058823529411765,
+        "r_fit_cv_across_structures": 0.30214743102669345,
+        "r_true_cv_across_structures": 0.7540248689698357
+      }
+    },
+    "C_hard_rock": {
+      "spearman": -0.09705882352941177,
+      "auroc": 0.45,
+      "median_rel_err_working": 0.9810546646555867,
+      "S_fit": 0.03683127835392952,
+      "S_k_fit": 0.0051255603320896626,
+      "L_fit": 0.0003143891226500273,
+      "seconds": 82.6,
+      "diagnostics": {
+        "data_rmse_cm": 0.2955288886520474,
+        "data_rmse_vs_clean_cm": 0.017434166590160744,
+        "pde_rms_m_per_day": 1.4624380195483574e-06,
+        "design_capacity_penalty": 0.0,
+        "mass_balance_penalty": 0.0,
+        "head_fit_over_true_scale": 0.026465451518764213,
+        "spearman_head_amplitude": 0.4794117647058824,
+        "spearman_rfit_vs_capacity_flux": 0.032352941176470584,
+        "r_fit_cv_across_structures": 6.32297103319404e-06,
+        "r_true_cv_across_structures": 0.7540248689698357
+      }
+    },
+    "D_with_wells": {
+      "spearman": 0.961764705882353,
+      "auroc": 1.0,
+      "median_rel_err_working": 0.8921709146598564,
+      "S_fit": 0.005213449243456125,
+      "S_k_fit": 0.005123290233314037,
+      "L_fit": 9.252386371372268e-05,
+      "seconds": 81.3,
+      "diagnostics": {
+        "data_rmse_cm": 0.29688822837858475,
+        "data_rmse_vs_clean_cm": 0.04108407997847449,
+        "pde_rms_m_per_day": 3.009257774783139e-05,
+        "design_capacity_penalty": 0.0,
+        "mass_balance_penalty": 0.0,
+        "head_fit_over_true_scale": 0.9961827710111343,
+        "spearman_head_amplitude": 0.988235294117647,
+        "spearman_rfit_vs_capacity_flux": 0.02647058823529412,
+        "r_fit_cv_across_structures": 0.5075968356843815,
+        "r_true_cv_across_structures": 0.7540248689698357
+      }
+    }
+  },
+  "protocol": "current-code-run3"
+}

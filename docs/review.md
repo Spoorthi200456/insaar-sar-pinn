@@ -497,6 +497,11 @@ failed before the fix; see each commit message for the before/after output.
   apply to the mean over a season, not to each step. If it is a hard
   hydraulic ceiling, the simulator was unrealistic. That is a definition for
   the author (OQ19).
+- **Correction after run 3:** this mismatch was real, but it was **not** the
+  main cause of B's failure. B still fails after the fix (0.42), and the
+  capacity penalty was small in both runs (0.008, then 0.004). The cause of B's
+  failure (underfit, head at 69 % of true amplitude) is not established; see
+  `experiments/synthetic_recovery/README.md`, run 3.
 - **Fixed by author decision 2 (2026-10-24):** the hinge now applies to the
   Δt-weighted 122-day (monsoon-season) mean of R·A, a soft limit on the
   seasonal average. Tests: `tests/test_losses.py::TestSeasonalCapacity` (3).

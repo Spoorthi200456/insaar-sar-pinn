@@ -279,3 +279,47 @@ Same simulator, seed, epochs (600), network lr (1e-3) and thresholds. One run:
 `python experiments/synthetic_recovery/run_recovery.py --protocol current-code-run3`
 (writes `results_run3.*`). Whatever it shows is reported, labelled "under a protocol
 revised after seeing run 1".
+
+### Run 3 — current code after the author's decisions (protocol `50bdf20`, declared before running)
+
+Files: `results_run3.csv`, `results_run3.json`. One run, same thresholds. **This is a
+protocol revised after seeing run 1. The official pre-registered result is still run 1b
+(failed).**
+
+| scenario | Spearman ρ | AUROC | median rel. err. (working) | fitted S / S_k / L (truth 0.05 / 5e-3 / 8.3e-4) | verdict |
+|---|---|---|---|---|---|
+| A, InSAR only | **0.95** | **1.00** | 0.95 | 0.0032 / 8.6e-3 / 7.2e-5 | **meets A** (ρ ≥ 0.70, AUROC ≥ 0.85) |
+| B, S and S_k known | 0.81 | 0.90 | **0.42** | (fixed) / (fixed) / 5.2e-4 | **fails B** (needs ≤ 0.30) |
+| C, hard rock | −0.10 | 0.45 | 0.98 | — | (report only) no information |
+| D, wells (absolute heads, +87.3 m datum) | 0.96 | 1.00 | 0.89 | 0.0052 / 5.1e-3 / 9.3e-5 | (report only) ranks perfectly; datum offset removed (head fit 0.996× true); absolute R 10× off because S is 10× off |
+
+**Correction to the run-2 explanation of B.** Run 2 attributed B's failure to the
+per-pass design-capacity ceiling (finding 31). Decision 2 replaced that with a seasonal
+soft limit, and B still fails (0.42 against 0.44). Looking back, the capacity penalty was
+already small at the end of run 2 (0.008; 0.004 now). So **that explanation was at most a
+minor part, and is withdrawn as the cause.**
+
+What the diagnostics do show for B:
+- The model **underfits** the InSAR data: RMSE 0.375 cm against 0.30 cm noise.
+- Its head reaches only **69 %** of the true amplitude.
+- The fitted leakance is 5.2e-4 against 8.3e-4.
+- Recovered recharge is compressed: spread CV 0.30 against 0.75.
+
+**The cause is not established.** Candidates, not tested:
+- B fixes S and S_k, so the optimiser cannot use the global scale that A uses to fit the
+  data.
+- The softplus recharge output cannot reach exactly zero in dry intervals.
+- 600 epochs may not be enough.
+
+Finding out needs further runs, which the author has not asked for.
+
+**What the current code has shown (synthetic, compliant aquifer):**
+- From InSAR alone it **ranks structures and separates working from failing** (scenario
+  A, meets the pre-registered A thresholds under the revised protocol).
+- It **does not recover absolute recharge**, even with S and S_k given (B fails).
+
+The test suite reflects exactly this:
+- `test_current_code_ranks_structures_from_insar_alone` asserts the A thresholds and
+  passes.
+- `test_current_code_recovers_absolute_recharge_with_known_constants` asserts the B
+  threshold and is `xfail(strict=True)`.

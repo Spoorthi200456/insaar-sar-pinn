@@ -110,29 +110,36 @@ class TestIdentifiability:
         assert spearmanr(eta_hat, sim.eta).statistic > 0.9
 
 
+# Official pre-registered outcome: run 1b FAILED (experiments/synthetic_recovery/
+# README.md; reproducible at commit a249eae with --protocol preregistered). The
+# tests below check the CURRENT training code (protocol "current-code-run3",
+# revised after seeing run 1 by the author's decisions) against the SAME
+# pre-registered thresholds.
+
+
+@pytest.mark.slow
+def test_current_code_ranks_structures_from_insar_alone(sim):
+    a = rr.run_scenario("A_insar_only", sim, protocol="current-code-run3")
+    msg = f"A: spearman {a.spearman:.3f} auroc {a.auroc:.3f}"
+    assert a.spearman >= rr.MIN_SPEARMAN_A, msg
+    assert a.auroc >= rr.MIN_AUROC_A, msg
+
+
 @pytest.mark.slow
 @pytest.mark.xfail(
     strict=True,
     reason=(
-        "Pre-registered known-answer test FAILS (official outcome, run 1b): InSAR-only "
-        "Spearman 0.26 / AUROC 0.57 (needs >= 0.70 / >= 0.85). Cause: global S_k starts at "
-        "1e-4, 50x below the truth, and Adam(lr 1e-3, 600 epochs) can move it only ~0.3 of the "
-        "~2.5 needed in its raw parameter, so the InSAR amplitude is never fitted. A diagnostic "
-        "run 2 with a separate learning rate for the global scalars, declared before running, "
-        "meets A (0.95 / 1.00) but still fails B (median relative error 0.44 > 0.30), because "
-        "the planted truth exceeds the per-step design-capacity hinge at 21 % of steps (review "
-        "finding 31). See experiments/synthetic_recovery/README.md. strict=True: if this "
-        "starts passing, the test errors so the README must be revisited."
+        "Scenario B (S and S_k fixed to truth) misses the pre-registered threshold under the "
+        "current code: median relative error of mean recharge 0.42 > max(0.30, 2 x oracle "
+        "0.061) in run 3. The model underfits (InSAR RMSE 0.375 cm vs 0.30 cm noise; head at "
+        "69 % of true amplitude); cause not established. Absolute recharge is therefore NOT "
+        "recovered even with known aquifer constants. See experiments/synthetic_recovery/"
+        "README.md (run 3). strict=True: if this starts passing, revisit the README."
     ),
 )
-def test_recovery_meets_preregistered_thresholds(sim):
+def test_current_code_recovers_absolute_recharge_with_known_constants(sim):
     floor = rr.oracle_floor(sim)
-    a = rr.run_scenario("A_insar_only", sim)
-    b = rr.run_scenario("B_oracle_S_Sk", sim, oracle_constants=True)
-    msg = (
-        f"A: spearman {a.spearman:.3f} auroc {a.auroc:.3f}; "
-        f"B: median rel err {b.median_rel_err_working:.3f} (oracle floor {floor:.3f})"
-    )
-    assert a.spearman >= rr.MIN_SPEARMAN_A, msg
-    assert a.auroc >= rr.MIN_AUROC_A, msg
-    assert b.median_rel_err_working <= max(rr.MAX_MEDIAN_REL_ERR_B_FLOOR, 2 * floor), msg
+    b = rr.run_scenario("B_oracle_S_Sk", sim, oracle_constants=True, protocol="current-code-run3")
+    assert b.median_rel_err_working <= max(
+        rr.MAX_MEDIAN_REL_ERR_B_FLOOR, 2 * floor
+    ), f"B: median rel err {b.median_rel_err_working:.3f} (oracle floor {floor:.3f})"
