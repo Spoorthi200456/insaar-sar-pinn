@@ -18,6 +18,8 @@ marked "check against your edition".
 | [data_quality_bounds.md](data_quality_bounds.md) | Per-interval displacement bound; flagged rainfall clamp | 21, 26 |
 | [time_intervals.md](time_intervals.md) | The first acquisition has no interval (Δt₀ = 0) | 22 |
 | [latent_drift.md](latent_drift.md) | Drift score against the training reference | 23 |
+| [ols_baseline.md](ols_baseline.md) | Method C: least squares on a linear-reservoir model | review 4 |
+| [test_time_fitting.md](test_time_fitting.md) | Method B: per-structure physics-informed fitting | review 4 |
 
 The governing equations used by the code are summarised in `CLAUDE.md` →
 "Governing physics"; these notes are the full derivations behind it.

@@ -43,6 +43,9 @@ class TruthConfig:
     low_coherence_fraction: float = 0.15
     revisit_days: tuple[float, ...] = (6.0, 12.0, 24.0)
     revisit_probs: tuple[float, ...] = (0.25, 0.5, 0.25)
+    # Review 4 "threshold" truth: only rain above this intensity infiltrates,
+    # R = eta * max(P/dt - threshold, 0). 0 = the linear truth of runs 1-4.
+    recharge_threshold_mm_per_day: float = 0.0
 
     @property
     def leakance(self) -> float:  # L [1/day]
@@ -120,6 +123,13 @@ def los_cm(head_m: np.ndarray, skeletal_storage: float, incidence_deg: np.ndarra
     return 100.0 * np.cos(incidence_deg * np.pi / 180.0)[:, None] * skeletal_storage * head_m
 
 
+def effective_rain_rate(cfg: TruthConfig, p_step_mm: np.ndarray, dt: np.ndarray) -> np.ndarray:
+    """Rain rate that can infiltrate [mm/day] per step: max(P/dt - threshold, 0); 0 at step 0."""
+    rate = np.zeros_like(p_step_mm, dtype=float)
+    rate[1:] = p_step_mm[1:] / dt[1:]
+    return np.maximum(rate - cfg.recharge_threshold_mm_per_day, 0.0) * (np.arange(len(rate)) > 0)
+
+
 def _daily_rain(rng: np.random.Generator, n_days: int) -> np.ndarray:
     """Monsoon-like daily rain: June-September wet (p=0.6, mean 15 mm), else dry (p=0.05, 5 mm)."""
     doy = np.arange(n_days) % 365
@@ -163,7 +173,7 @@ def simulate(cfg: TruthConfig = TruthConfig()) -> Simulation:
     theta = rng.uniform(29.0, 46.0, n)
 
     recharge = np.zeros((n, k))
-    recharge[:, 1:] = eta[:, None] * p_step[None, 1:] / 1000.0 / dt[None, 1:]
+    recharge[:, 1:] = eta[:, None] * effective_rain_rate(cfg, p_step, dt)[None, 1:] / 1000.0
     g = lateral_operator(a, transmissivity)
     head = integrate_head(cfg, recharge, dt, g)
     d_clean = los_cm(head, cfg.skeletal_storage, theta)
@@ -219,7 +229,7 @@ def oracle_eta(sim: Simulation) -> np.ndarray:
     n, k = sim.recharge.shape
     g = lateral_operator(sim.a_ij, sim.transmissivity)
     unit_r = np.zeros((n, k))
-    unit_r[:, 1:] = sim.rain_per_step_mm[None, 1:] / 1000.0 / sim.dt_days[None, 1:]
+    unit_r[:, 1:] = effective_rain_rate(cfg, sim.rain_per_step_mm, sim.dt_days)[None, 1:] / 1000.0
     cols = []
     for j in range(n):
         r = np.zeros((n, k))
