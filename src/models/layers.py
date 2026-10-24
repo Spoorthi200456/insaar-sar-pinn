@@ -328,6 +328,12 @@ class RechargeDecoder(nn.Module):
     `non_negative=True` (recharge R_i(t)): softplus output (softer than a hard
     clamp, keeps gradients flowing near zero). `non_negative=False` (head rate
     v_i(t), review-2 integrator fix): signed linear output.
+
+    Review finding 30: u_i also conditions EVERY step (a projection of u_i is
+    concatenated with the rainfall input), not only the initial state. All
+    structures in a region share the rainfall, and an LSTM forgets its initial
+    state, so with initial-state conditioning alone R(t) became a function of
+    rainfall only after a few dozen steps (identical for every structure).
     """
 
     def __init__(self, fused_dim: int, hidden_dim: int = 64, non_negative: bool = True) -> None:
@@ -335,7 +341,9 @@ class RechargeDecoder(nn.Module):
         self.non_negative = non_negative
         self.init_hidden = nn.Linear(fused_dim, hidden_dim)
         self.init_cell = nn.Linear(fused_dim, hidden_dim)
-        self.cell = nn.LSTMCell(input_size=1, hidden_size=hidden_dim)
+        cond_dim = max(hidden_dim // 2, 1)
+        self.cond_proj = nn.Linear(fused_dim, cond_dim)
+        self.cell = nn.LSTMCell(input_size=1 + cond_dim, hidden_size=hidden_dim)
         self.output_head = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim // 2),
             nn.GELU(),
@@ -352,9 +360,10 @@ class RechargeDecoder(nn.Module):
         b, t = rainfall.shape
         h = torch.tanh(self.init_hidden(fused))
         c = torch.tanh(self.init_cell(fused))
+        cond = torch.tanh(self.cond_proj(fused))  # (B, cond_dim), same at every step
         outputs = []
         for step in range(t):
-            inp = rainfall[:, step].unsqueeze(-1)
+            inp = torch.cat([rainfall[:, step].unsqueeze(-1), cond], dim=-1)
             h, c = self.cell(inp, (h, c))
             outputs.append(self.output_head(h))
         q = torch.cat(outputs, dim=1)

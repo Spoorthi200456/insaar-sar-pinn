@@ -275,3 +275,26 @@ class TestRechargeOutputScale:
             )
         mean_r = out.recharge_rate.mean().item()
         assert 1e-4 < mean_r < 5e-2  # 0.1 mm/day .. 50 mm/day
+
+
+class TestDecoderKeepsStructureIdentity:
+    """
+    Review finding 30. Structures in one region share the same rainfall. The
+    recharge / head-rate decoders must still be able to give different
+    structures different outputs late in a long series, so the structure
+    embedding has to condition every step, not only the LSTM's initial state
+    (which an LSTM forgets geometrically).
+    """
+
+    def test_late_outputs_still_depend_on_structure_embedding(self):
+        from src.models.layers import RechargeDecoder
+
+        torch.manual_seed(0)
+        dec = RechargeDecoder(fused_dim=8, hidden_dim=16, non_negative=False).eval()
+        fused = torch.randn(2, 8)  # two different structures
+        rain = torch.rand(1, 40).expand(2, 40) * 30.0  # identical regional rainfall
+        with torch.no_grad():
+            out = dec(fused, rain)
+        early = (out[0, :3] - out[1, :3]).abs().mean()
+        late = (out[0, -10:] - out[1, -10:]).abs().mean()
+        assert late > 0.1 * early, (float(early), float(late))

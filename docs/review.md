@@ -333,6 +333,7 @@ failed before the fix; see each commit message for the before/after output.
 | 27 | `src/backend/api.py` (WebSocket) | Streaming endpoint has no test | Open |
 | 28 | `src/models/layers.py::CVEncoder` | CV branch unused by any training, demo or test path | Open |
 | 29 | `src/models/losses.py::CompositeARSLoss` | Total loss adds (m/day)², cm² and m²: physics weight ≈ 1e-6 of data | **Fixed** |
+| 30 | `src/models/layers.py::RechargeDecoder` | Decoders forget which structure they are decoding: R identical across structures | **Fixed** |
 
 ## 11. Flow equation has no sink
 
@@ -460,6 +461,26 @@ failed before the fix; see each commit message for the before/after output.
   TypeError (no scale arguments). Behavioural: the same data gave total
   **1.75** in cm and **175** in mm, with the PDE term 6.1e-7 against a data term
   of 1.75. After: 2 passed.
+- **Status:** Fixed.
+
+## 30. The decoders forget which structure they are decoding
+
+- **Where:** `RechargeDecoder` (used for R and for the head rate v). The
+  structure embedding u_i entered only as the LSTM's initial state; the
+  per-step input was rainfall alone.
+- **Found by:** the known-answer experiment, run 1. Recovered mean R had a
+  coefficient of variation across structures of **7.8e-7** (truth: 0.75).
+  The model gave every structure the same recharge.
+- **Problem:** structures in one region share the rainfall series, and an
+  LSTM forgets its initial state roughly geometrically. After a few dozen
+  steps the output is a function of rainfall only. It cannot express "this
+  structure recharges, that one is clogged". That is the project's question.
+- **Fix:** a projection of u_i is concatenated with rainfall at every step
+  (standard per-step conditioning). No physics term changed.
+- **Test:** `tests/test_models.py::TestDecoderKeepsStructureIdentity`. Two
+  embeddings under identical rainfall over 40 steps. Before: the late-step
+  difference had decayed to **2.7e-5** from 0.028 at the start (failed: needs
+  > 10 % of the early difference). After: passed.
 - **Status:** Fixed.
 
 ## 21–28. Open findings (documented, not fixed)
