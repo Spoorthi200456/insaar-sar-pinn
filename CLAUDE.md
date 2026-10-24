@@ -12,6 +12,10 @@ Core code: `src/models/` (network, layers, losses), `src/data/` (schemas, prepro
   working (recharging the aquifer) or failing (clogging, leakage, structural
   damage), using freely available satellite InSAR + rainfall + design data,
   constrained by groundwater physics.
+- Scope (author decision 3, 2026-10-24): satellite-only monitoring is limited to
+  ALLUVIAL aquifers. Hard-rock aquifers are out of scope, because there the InSAR
+  signal of recharge (~0.04 mm for 2 m of head) is far below Sentinel-1 noise.
+  Reasoning: docs/open_questions.md OQ1/OQ8.
 - The method (equations, loss terms, architecture) MAY change if it is
   physically or mathematically wrong. Every such change must be proposed in
   plan mode first, with the reason, and approved by the author.
