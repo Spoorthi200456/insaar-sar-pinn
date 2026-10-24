@@ -323,3 +323,37 @@ The test suite reflects exactly this:
   passes.
 - `test_current_code_recovers_absolute_recharge_with_known_constants` asserts the B
   threshold and is `xfail(strict=True)`.
+
+### Run 4 protocol — HELD-OUT structures (declared and committed before running; review 3)
+
+**Question:** does the model work on structures whose data it has **never seen**? Runs
+1–3 trained and scored on the same 16 structures. Script: `heldout.py`.
+
+- **Data:** the same independent simulator, physics and noise, with **64 structures (24
+  failing)** so the held-out set is large enough to score.
+- **Split:** `src/data/splits.py`, 70/15/15 by connected structure group, stratified by
+  working/failing, seed 0. This gives 44 train, 10 validation and 10 test structures (6
+  working and 4 failing in test, so 24 working/failing pairs). No structure and no graph
+  edge is shared between splits.
+- **Training:** as `src/training/train.py` does.
+  - Training structures only, full batch.
+  - Design normalisation fitted on them.
+  - `build_optimizer` (network lr 1e-3; global scalars 0.02).
+  - 600 epochs, seed 0.
+  - Validation loss every 10 epochs; the best epoch is kept.
+- **Scoring:** the kept model is run **once** on the 10 test structures. Spearman ρ, AUROC
+  and the median relative error over the test structures only, against the oracle floor
+  on those structures.
+- **Scenarios:**
+  - A: InSAR only.
+  - B: S and S_k fixed to truth.
+  - C: hard rock, report only.
+  - D: wells at the **training** structures only (absolute, +87.3 m datum); test
+    structures are scored from InSAR alone, as at deployment. Report only.
+- **Thresholds: the pre-registered ones, unchanged.**
+  - A: ρ ≥ 0.70 and AUROC ≥ 0.85.
+  - B: median relative error ≤ max(0.30, 2 × oracle floor on the test structures).
+
+The pytest (`tests/test_synthetic_recovery.py::TestHeldOut*`) asserts exactly these. Any
+scenario that misses its threshold will be marked `xfail(strict=True)` with the result
+and reason, as for run 3. The thresholds will not be moved.

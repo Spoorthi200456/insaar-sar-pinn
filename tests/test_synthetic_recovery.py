@@ -143,3 +143,49 @@ def test_current_code_recovers_absolute_recharge_with_known_constants(sim):
     assert b.median_rel_err_working <= max(
         rr.MAX_MEDIAN_REL_ERR_B_FLOOR, 2 * floor
     ), f"B: median rel err {b.median_rel_err_working:.3f} (oracle floor {floor:.3f})"
+
+
+# --------------------------------------------------------------------------- #
+# Held-out structures (review 3, run 4): trained on the training split,
+# scored ONLY on test structures the model never saw. Same thresholds.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture(scope="module")
+def heldout_sim():
+    from experiments.synthetic_recovery import heldout
+
+    return simulate(heldout.HELDOUT_CONFIG)
+
+
+class TestHeldOutSplit:
+    def test_test_structures_never_reach_training(self, heldout_sim):
+        from experiments.synthetic_recovery import heldout
+
+        _, split = heldout.make_split(heldout_sim)
+        train, val, test = set(split.train), set(split.validation), set(split.test)
+        assert not (train & val) and not (train & test) and not (val & test)
+        assert len(test) == 10
+        fail = {f"SYN-{i:02d}" for i in range(64) if heldout_sim.failing[i]}
+        assert 0 < len(test & fail) < len(test)  # both classes present
+
+
+@pytest.mark.slow
+def test_heldout_ranks_unseen_structures_from_insar_alone(heldout_sim):
+    from experiments.synthetic_recovery import heldout
+
+    a = heldout.run_heldout("A_insar_only", heldout_sim)
+    msg = f"held-out A: spearman {a.spearman:.3f} auroc {a.auroc:.3f} (n_test {a.n_test})"
+    assert a.spearman >= rr.MIN_SPEARMAN_A, msg
+    assert a.auroc >= rr.MIN_AUROC_A, msg
+
+
+@pytest.mark.slow
+def test_heldout_recovers_absolute_recharge_with_known_constants(heldout_sim):
+    from experiments.synthetic_recovery import heldout
+
+    b = heldout.run_heldout("B_oracle_S_Sk", heldout_sim, oracle_constants=True)
+    limit = max(rr.MAX_MEDIAN_REL_ERR_B_FLOOR, 2 * b.oracle_floor_test)
+    assert (
+        b.median_rel_err_working <= limit
+    ), f"held-out B: median rel err {b.median_rel_err_working:.3f} > {limit:.3f}"
