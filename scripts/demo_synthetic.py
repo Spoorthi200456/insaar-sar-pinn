@@ -8,18 +8,18 @@ What it does
 - Trains ARSNet with `CompositeARSLoss`, using the same optimiser settings as
   `src/training/train.py` (AdamW lr 3e-4, wd 1e-5, cosine schedule, grad clip
   5.0). Two differences from train.py: a fixed epoch count, and ONE full batch
-  holding every structure. With one full batch the graph built by the collate
-  function is the fixed full-network graph, so the physics does not depend on
-  minibatch composition (review finding 4 is avoided here, not fixed in src/).
+  holding every structure (the fixed network graph of review finding 4; since
+  review 2, minibatches in train.py give identical physics anyway).
 - Saves docs/demo/loss_curves.png (one panel per loss term vs epoch) and
   docs/demo/loss_history.csv (the same numbers as a table).
-- Prints the learned storativity S, the number of graph edges, and the
-  predicted T and R for 3 structures.
+- Prints the learned S, S_k and L next to the generator's planted values, the
+  number of graph edges, and the predicted T and R for 3 structures.
 
 What it is NOT
-- Not a recovery test: the synthetic generator has no ground-truth T, R or S in
-  form-(b) units, and it uses the same unfixed displacement coupling as the
-  model (review finding 2). Good fit here says nothing about real aquifers.
+- Not a recovery test: that is experiments/synthetic_recovery/ (which, under
+  its pre-registered protocol, FAILS - see its README). The smoke generator here
+  uses the model's own coupling (review finding 2), so a good fit here says
+  nothing about real aquifers.
 - Does not modify anything under src/.
 """
 
@@ -48,7 +48,7 @@ warnings.filterwarnings("ignore", message=r".*protected namespace.*")
 from src.data.dataset import ARSDataset, make_collate_fn  # noqa: E402
 from src.models.losses import CompositeARSLoss, LossWeights  # noqa: E402
 from src.models.network import ARSNet  # noqa: E402
-from src.training.train import make_synthetic_records  # noqa: E402
+from src.training.train import make_synthetic_records_with_truth  # noqa: E402
 
 TAG = "[SYNTHETIC DATA]"
 SEED = 0
@@ -62,8 +62,8 @@ OUT_DIR = ROOT / "docs" / "demo"
 
 # (as_dict key, panel title, weight attribute or None for the weighted total)
 TERMS = [
-    ("pde_residual", "PDE residual  r = S∂h/∂t − ∇·(T∇h) − R", "pde"),
-    ("data_misfit", "Data misfit (displacement)", "data"),
+    ("pde_residual", "PDE residual  r = S∂h/∂t − ∇·(T∇h) + Lh − R  [(m/day)²]", "pde"),
+    ("data_misfit", "Data misfit (displacement) [cm²]", "data"),
     ("boundary_condition", "Boundary / initial condition", "boundary"),
     ("design_capacity_penalty", "Design-capacity penalty", "design_capacity"),
     ("non_negativity_penalty", "Non-negativity penalty", "non_negativity"),
@@ -134,13 +134,23 @@ def plot_loss_curves(history: dict[str, list[float]], weights: LossWeights, path
         y = np.asarray(history[key])
         ax.set_facecolor(SURFACE)
         ax.plot(epochs, y, color=SERIES_1, linewidth=1.5, solid_capstyle="round")
-        subtitle = "weighted sum of all terms" if weight_attr is None else (
-            f"unweighted; weight w = {getattr(weights, weight_attr):g}"
+        subtitle = (
+            "weighted sum of all terms"
+            if weight_attr is None
+            else (f"unweighted; weight w = {getattr(weights, weight_attr):g}")
         )
         ax.set_title(f"{title}\n{subtitle}", fontsize=9.5, color=INK, loc="left")
         if np.all(y == 0):
-            ax.text(0.5, 0.8, "0 at every epoch\n(term inactive in this run)",
-                    transform=ax.transAxes, ha="center", va="center", fontsize=9, color=INK_2)
+            ax.text(
+                0.5,
+                0.8,
+                "0 at every epoch\n(term inactive in this run)",
+                transform=ax.transAxes,
+                ha="center",
+                va="center",
+                fontsize=9,
+                color=INK_2,
+            )
         elif np.all(y > 0) and y.max() / y.min() > 100:
             ax.set_yscale("log")
             ax.set_ylabel("log scale", fontsize=8, color=INK_2)
@@ -155,12 +165,20 @@ def plot_loss_curves(history: dict[str, list[float]], weights: LossWeights, path
     fig.suptitle(
         f"SYNTHETIC DATA — ARSNet loss terms vs epoch  "
         f"({N_STRUCTURES} structures × {N_TIMESTEPS} steps, seed {SEED}, full batch, CPU)",
-        fontsize=12, color=INK, x=0.01, ha="left",
+        fontsize=12,
+        color=INK,
+        x=0.01,
+        ha="left",
     )
-    fig.text(0.01, 0.005,
-             "SYNTHETIC DATA. Not a recovery test: no ground-truth T/R/S; displacement coupling "
-             "unfixed (review finding 2). Units of h and R are declared, not enforced.",
-             fontsize=8, color=INK_2, ha="left")
+    fig.text(
+        0.01,
+        0.005,
+        "SYNTHETIC DATA. Not a recovery test (see experiments/synthetic_recovery/). Terms "
+        "unweighted in physical units; the total is dimensionless (review finding 29).",
+        fontsize=8,
+        color=INK_2,
+        ha="left",
+    )
     fig.tight_layout(rect=(0, 0.03, 1, 0.94))
     fig.savefig(path, dpi=150, facecolor=SURFACE)
     plt.close(fig)
@@ -171,7 +189,9 @@ def main() -> None:
     seed_everything(SEED)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    records = make_synthetic_records(n_structures=N_STRUCTURES, n_timesteps=N_TIMESTEPS, seed=SEED)
+    records, truth = make_synthetic_records_with_truth(
+        n_structures=N_STRUCTURES, n_timesteps=N_TIMESTEPS, seed=SEED
+    )
     batch = full_batch(records)
 
     adjacency = batch["physics_adjacency"]
@@ -186,8 +206,10 @@ def main() -> None:
 
     history: dict[str, list[float]] = {key: [] for key, _, _ in TERMS}
     s_history: list[float] = []
-    print(f"{TAG} training ARSNet: {N_STRUCTURES} structures x {N_TIMESTEPS} steps, "
-          f"{EPOCHS} epochs, seed {SEED}, full batch, CPU")
+    print(
+        f"{TAG} training ARSNet: {N_STRUCTURES} structures x {N_TIMESTEPS} steps, "
+        f"{EPOCHS} epochs, seed {SEED}, full batch, CPU"
+    )
     for epoch in range(EPOCHS):
         model.train()
         optimizer.zero_grad(set_to_none=True)
@@ -203,8 +225,10 @@ def main() -> None:
             history[key].append(value)
         s_history.append(float(out.storativity.detach()))
         if epoch % 50 == 0 or epoch == EPOCHS - 1:
-            print(f"{TAG} epoch {epoch:4d}  total {history['total'][-1]:.5f}  "
-                  f"pde {history['pde_residual'][-1]:.3e}  data {history['data_misfit'][-1]:.5f}")
+            print(
+                f"{TAG} epoch {epoch:4d}  total {history['total'][-1]:.5f}  "
+                f"pde {history['pde_residual'][-1]:.3e}  data {history['data_misfit'][-1]:.5f}"
+            )
     train_seconds = time.time() - t_start
 
     model.eval()
@@ -217,36 +241,56 @@ def main() -> None:
     plot_loss_curves(history, weights, png)
     with csv_path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow(["# SYNTHETIC DATA - ARSNet loss terms per epoch (unweighted; total is weighted)"])
+        writer.writerow(
+            ["# SYNTHETIC DATA - ARSNet loss terms per epoch (unweighted; total is weighted)"]
+        )
         writer.writerow(["epoch", *[key for key, _, _ in TERMS], "storativity_S"])
         for i in range(EPOCHS):
-            writer.writerow([i + 1, *[f"{history[key][i]:.8g}" for key, _, _ in TERMS],
-                             f"{s_history[i]:.8g}"])
+            writer.writerow(
+                [i + 1, *[f"{history[key][i]:.8g}" for key, _, _ in TERMS], f"{s_history[i]:.8g}"]
+            )
 
     print()
     print(f"{TAG} ===== RESULTS =====")
-    print(f"{TAG} training time        : {train_seconds:.1f} s on CPU "
-          f"({'within' if train_seconds < TIME_BUDGET_S else 'OVER'} the {TIME_BUDGET_S:.0f} s budget)")
-    print(f"{TAG} learned storativity S: {float(out.storativity):.6f} (init 0.020000) "
-          f"- fitted coefficient, NOT a measured specific yield")
-    print(f"{TAG} graph edges          : {n_edges} of {n_pairs} possible pairs "
-          f"(undirected, radius {CONNECTIVITY_RADIUS_KM:g} km)")
+    print(
+        f"{TAG} training time        : {train_seconds:.1f} s on CPU "
+        f"({'within' if train_seconds < TIME_BUDGET_S else 'OVER'} the {TIME_BUDGET_S:.0f} s budget)"
+    )
+    print(
+        f"{TAG} learned S / S_k / L  : {float(out.storativity):.4f} / "
+        f"{float(out.skeletal_storage):.2e} / {float(out.leakance):.2e} 1/day "
+        f"(generator: {truth[0]['storativity']:.4f} / {truth[0]['skeletal_storage']:.2e} / "
+        f"{truth[0]['leakance_per_day']:.2e}) - fitted coefficients; only R*S_k/S is "
+        f"identifiable from InSAR"
+    )
+    print(
+        f"{TAG} graph edges          : {n_edges} of {n_pairs} possible pairs "
+        f"(undirected, radius {CONNECTIVITY_RADIUS_KM:g} km)"
+    )
     print(f"{TAG} final eval losses    : " + ", ".join(f"{k}={v:.4g}" for k, v in final.items()))
-    print(f"{TAG} predicted T and R for 3 structures "
-          f"(T in m²/day and R in m/day are DECLARED units, not enforced):")
-    print(f"{TAG}   {'structure':<10} {'T [m²/day]':>11} {'R mean [m/day]':>15} "
-          f"{'R min':>10} {'R max':>10} {'graph degree':>13}")
+    print(
+        f"{TAG} predicted T and R for 3 structures (T [m²/day]; R [m/day], "
+        f"generator mean R in the last column):"
+    )
+    print(
+        f"{TAG}   {'structure':<10} {'T [m²/day]':>11} {'R mean [m/day]':>15} "
+        f"{'R min':>10} {'R max':>10} {'graph degree':>13} {'true R mean':>12}"
+    )
     degree = (adjacency > 0).sum(dim=1)
     for i in range(3):
         sid = batch["structure_ids"][i]
         r = out.recharge_rate[i]
-        print(f"{TAG}   {sid:<10} {float(out.hydraulic_conductivity[i]):>11.4f} "
-              f"{float(r.mean()):>15.4e} {float(r.min()):>10.3e} {float(r.max()):>10.3e} "
-              f"{int(degree[i]):>13d}")
+        print(
+            f"{TAG}   {sid:<10} {float(out.hydraulic_conductivity[i]):>11.4f} "
+            f"{float(r.mean()):>15.4e} {float(r.min()):>10.3e} {float(r.max()):>10.3e} "
+            f"{int(degree[i]):>13d} {np.mean(truth[i]['recharge_m_per_day'][1:]):>12.4e}"
+        )
     print(f"{TAG} saved plot  : {png.relative_to(ROOT).as_posix()}")
     print(f"{TAG} saved table : {csv_path.relative_to(ROOT).as_posix()}")
-    print(f"{TAG} caveat: not a recovery test - the synthetic generator has no ground-truth "
-          f"T/R/S and shares the unfixed coupling (review finding 2).")
+    print(
+        f"{TAG} caveat: not a recovery test - see experiments/synthetic_recovery/README.md "
+        f"(the pre-registered known-answer test FAILS)."
+    )
 
 
 if __name__ == "__main__":
