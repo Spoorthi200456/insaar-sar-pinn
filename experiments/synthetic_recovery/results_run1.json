@@ -1,0 +1,100 @@
+{
+  "oracle_median_rel_err": 0.06051644644600922,
+  "oracle_median_rel_err_hard_rock": 15.129111611502411,
+  "thresholds": {
+    "spearman_A": 0.7,
+    "auroc_A": 0.85,
+    "median_rel_err_B": 0.3
+  },
+  "truth": {
+    "S": 0.05,
+    "S_k": 0.005,
+    "L": 0.0008333333333333334
+  },
+  "scenarios": {
+    "A_insar_only": {
+      "spearman": 0.21697564695732335,
+      "auroc": 0.5916666666666667,
+      "median_rel_err_working": 0.8198343852251242,
+      "S_fit": 0.02048194780945778,
+      "S_k_fit": 0.0002628127986099571,
+      "L_fit": 0.0009360903641209006,
+      "seconds": 73.2,
+      "diagnostics": {
+        "data_rmse_cm": 0.549960571528314,
+        "data_rmse_vs_clean_cm": 0.4541653271215936,
+        "pde_rms_m_per_day": 3.887701871685216e-06,
+        "design_capacity_penalty": 0.0,
+        "mass_balance_penalty": 0.0,
+        "head_fit_over_true_scale": 0.0912990273062945,
+        "spearman_head_amplitude": -0.023529411764705882,
+        "spearman_rfit_vs_capacity_flux": 0.05313689313240572,
+        "r_fit_cv_across_structures": 7.75598591732256e-07,
+        "r_true_cv_across_structures": 0.7540248689698357
+      }
+    },
+    "B_oracle_S_Sk": {
+      "spearman": 0.01764705882352941,
+      "auroc": 0.5,
+      "median_rel_err_working": 0.27239616722098814,
+      "S_fit": 0.05000000074505806,
+      "S_k_fit": 0.0050000036135315895,
+      "L_fit": 0.0008843322284519672,
+      "seconds": 72.6,
+      "diagnostics": {
+        "data_rmse_cm": 0.42294766811018175,
+        "data_rmse_vs_clean_cm": 0.30587999211104017,
+        "pde_rms_m_per_day": 1.1959612121529996e-05,
+        "design_capacity_penalty": 0.012202417477965355,
+        "mass_balance_penalty": 0.0,
+        "head_fit_over_true_scale": 0.5186321707195661,
+        "spearman_head_amplitude": 0.7970588235294117,
+        "spearman_rfit_vs_capacity_flux": -0.0588235294117647,
+        "r_fit_cv_across_structures": 6.367436275250555e-06,
+        "r_true_cv_across_structures": 0.7540248689698357
+      }
+    },
+    "C_hard_rock": {
+      "spearman": -0.13823529411764704,
+      "auroc": 0.36666666666666664,
+      "median_rel_err_working": 0.9407794626622529,
+      "S_fit": 0.020423902198672295,
+      "S_k_fit": 0.00022371456725522876,
+      "L_fit": 0.0009452690137550235,
+      "seconds": 79.3,
+      "diagnostics": {
+        "data_rmse_cm": 0.2960780413052968,
+        "data_rmse_vs_clean_cm": 0.0014782065175710356,
+        "pde_rms_m_per_day": 1.292406138562742e-06,
+        "design_capacity_penalty": 0.0,
+        "mass_balance_penalty": 0.0,
+        "head_fit_over_true_scale": 0.02834447256708377,
+        "spearman_head_amplitude": 0.22941176470588234,
+        "spearman_rfit_vs_capacity_flux": -0.2323529411764706,
+        "r_fit_cv_across_structures": 1.9744929652514166e-05,
+        "r_true_cv_across_structures": 0.7540248689698357
+      }
+    },
+    "D_with_wells": {
+      "spearman": 0.9676470588235294,
+      "auroc": 1.0,
+      "median_rel_err_working": 0.26417908679545477,
+      "S_fit": 0.017866844311356544,
+      "S_k_fit": 0.00020560315169859678,
+      "L_fit": 0.0006531876279041171,
+      "seconds": 71.2,
+      "diagnostics": {
+        "data_rmse_cm": 0.5365132055864541,
+        "data_rmse_vs_clean_cm": 0.4380946041737928,
+        "pde_rms_m_per_day": 5.21118150462496e-05,
+        "design_capacity_penalty": 0.057710759341716766,
+        "mass_balance_penalty": 0.0,
+        "head_fit_over_true_scale": 0.9676278909934705,
+        "spearman_head_amplitude": 0.988235294117647,
+        "spearman_rfit_vs_capacity_flux": 0.02647058823529412,
+        "r_fit_cv_across_structures": 0.6492632172107196,
+        "r_true_cv_across_structures": 0.7540248689698357
+      }
+    }
+  }
+}

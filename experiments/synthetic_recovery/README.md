@@ -81,4 +81,36 @@ thresholds are not moved.
 
 ## Results
 
-*Not yet run at the time the thresholds were committed.* See the next commit.
+### Run 1 (code at commit `9742130`, first run after pre-registration): **FAILED**
+
+Files: `results_run1.csv` (per structure), `results_run1.json`. The run is
+deterministic: a second run gave identical numbers.
+
+| scenario | Spearman ρ | AUROC | median rel. err. (working) | fitted S / S_k / L | verdict |
+|---|---|---|---|---|---|
+| A, InSAR only | 0.22 | 0.59 | 0.82 | 0.021 / 2.6e-4 / 9.4e-4 | **fails** (needs ρ ≥ 0.70 and AUROC ≥ 0.85) |
+| B, S and S_k known | 0.02 | 0.50 | 0.27 | 0.050 / 5.0e-3 / 8.8e-4 | meets ≤ 0.30, **but meaningless**: AUROC 0.50 |
+| C, hard rock | −0.14 | 0.37 | 0.94 | — | (report only) no information, as expected |
+| D, with wells | **0.97** | **1.00** | 0.26 | 0.018 / 2.1e-4 / 6.5e-4 | (report only) recovers ranking and the working/failing split |
+
+Oracle noise floor (perfect constants): median relative error **0.061**.
+B threshold = max(0.30, 2 × 0.061) = 0.30.
+
+**Why it failed (diagnostics in `results_run1.json`).** The recovered mean recharge was
+**the same for every structure**: its spread across structures (coefficient of variation)
+was 7.8e-7 in A and 6.4e-6 in B, against 0.75 in the truth. B's relative error of 0.27
+is just what a constant guess scores when the true η is spread over 0.3–0.6. That is why
+it "passes" the number while separating nothing.
+
+The cause is in the architecture. `RechargeDecoder` (and the head-rate decoder built from
+it) gives an LSTM the structure's embedding only as its *initial state*. Its per-step
+input is rainfall, which is the same for every structure in the region. An LSTM forgets
+its initial state roughly geometrically, so after ~40 steps the structure's identity is
+gone, and R(t) becomes a function of rainfall alone. In A the head fit was also poor
+(data RMSE 0.55 cm against 0.3 cm noise).
+
+With wells (D), the direct head constraint was strong enough to force some memory
+through, and recovery worked.
+
+This is recorded as review finding 30 and fixed in the next commit, with its own failing
+test. The pre-registered thresholds are **not changed**.

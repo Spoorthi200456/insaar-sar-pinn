@@ -85,6 +85,7 @@ class ScenarioResult:
     r_true_mean: np.ndarray
     r_fit_mean: np.ndarray
     seconds: float
+    diagnostics: dict
 
 
 def seed_everything(seed: int) -> None:
@@ -224,11 +225,35 @@ def run_scenario(
     model.eval()
     with torch.no_grad():
         out = forward()
+        final = loss_of(out)
     # mean recharge over steps 1..K-1 (step 0 has no preceding interval)
     r_fit = out.recharge_rate[:, 1:].mean(dim=1).double().numpy()
     r_true = sim.recharge[:, 1:].mean(axis=1)
     working = ~sim.failing
     rel = np.abs(r_fit[working] - r_true[working]) / r_true[working]
+
+    # Diagnostics (explain a result; never used to pass or fail it)
+    reliable = batch["coherence_mask"].numpy()
+    d_fit = out.predicted_displacement_cm.numpy()
+    h_fit = out.predicted_head_change.double().numpy()
+    capacity_flux = sim.design_capacity_m3_per_day / sim.recharge_area_m2  # m/day
+    h_scale = np.sum(h_fit * sim.head) / np.sum(sim.head**2)  # least squares h_fit ~ c h_true
+    diagnostics = {
+        "data_rmse_cm": float(np.sqrt(np.mean((d_fit - sim.displacement_cm)[reliable] ** 2))),
+        "data_rmse_vs_clean_cm": float(
+            np.sqrt(np.mean((d_fit - sim.displacement_clean_cm)[reliable] ** 2))
+        ),
+        "pde_rms_m_per_day": float(np.sqrt(final.pde.item())),
+        "design_capacity_penalty": float(final.design_capacity),
+        "mass_balance_penalty": float(final.mass_balance),
+        "head_fit_over_true_scale": float(h_scale),
+        "spearman_head_amplitude": float(
+            spearmanr(np.abs(h_fit).max(axis=1), np.abs(sim.head).max(axis=1)).statistic
+        ),
+        "spearman_rfit_vs_capacity_flux": float(spearmanr(r_fit, capacity_flux).statistic),
+        "r_fit_cv_across_structures": float(np.std(r_fit) / np.mean(r_fit)),
+        "r_true_cv_across_structures": float(np.std(r_true) / np.mean(r_true)),
+    }
     return ScenarioResult(
         name=name,
         spearman=float(spearmanr(r_fit, r_true).statistic),
@@ -240,6 +265,7 @@ def run_scenario(
         r_true_mean=r_true,
         r_fit_mean=r_fit,
         seconds=time.time() - t_start,
+        diagnostics=diagnostics,
     )
 
 
@@ -298,6 +324,7 @@ def main() -> None:
             "S_k_fit": res.s_k_fit,
             "L_fit": res.leakance_fit,
             "seconds": round(res.seconds, 1),
+            "diagnostics": res.diagnostics,
         }
         print(
             f"{res.name:15s} spearman {res.spearman:+.3f}  auroc {res.auroc:.3f}  "
@@ -305,6 +332,7 @@ def main() -> None:
             f"S {res.s_fit:.4f}  S_k {res.s_k_fit:.2e}  L {res.leakance_fit:.2e}  "
             f"({res.seconds:.0f} s)"
         )
+        print("    " + ", ".join(f"{k}={v:.3g}" for k, v in res.diagnostics.items()))
     (HERE / "results.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
     (HERE / "results.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     print(f"wrote {HERE / 'results.csv'} and results.json")
