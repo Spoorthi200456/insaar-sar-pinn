@@ -328,7 +328,7 @@ failed before the fix; see each commit message for the before/after output.
 | 22 | `src/data/preprocessing.py::time_deltas_days` | Δt at step 0 is fabricated (copied from step 1) | Open (low) |
 | 23 | `src/backend/inference_engine.py::explain` | `latent_drift_score` does not measure drift | Open |
 | 24 | `src/training/train.py` | "Best" checkpoint chosen on training loss; no validation split | Open |
-| 25 | `src/models/losses.py`, `train.py` | Well heads (`well_series`) never reach the loss | Open (Phase B) |
+| 25 | `src/models/losses.py`, `train.py` | Well heads (`well_series`) never reach the loss | **Fixed** (author decision 4) |
 | 26 | `src/data/schemas.py::RainfallObservation` | Rain > 1000 mm silently clamped, no flag | Open (low) |
 | 27 | `src/backend/api.py` (WebSocket) | Streaming endpoint has no test | Open |
 | 28 | `src/models/layers.py::CVEncoder` | CV branch unused by any training, demo or test path | Open |
@@ -546,6 +546,12 @@ failed before the fix; see each commit message for the before/after output.
   them. Without heads, R is identifiable only up to S_k/S (finding-2 plan
   §7; confirmed by the known-answer experiment). This is Phase B, a new loss
   term that needs its own plan.
+  **Fixed by author decision 4 (2026-10-24):** optional well term (absolute
+  head, de-meaned per structure, σ_h = 0.1 m); the dataset matches readings
+  within ±3 days (OQ20); training logs the structures without wells; the API
+  reports `has_well_data` and `well_head_rmse_m`. Tests: `tests/test_wells.py`
+  (7; all failed before: missing fields/arguments). Limitation: the deployed
+  network uses wells only through training, not at prediction time.
 - **26. Silent rainfall clamp.** Rain > 1000 mm per interval is clamped to 1000
   with no quality flag. That is plausible for a single interval, but the event
   is hidden.

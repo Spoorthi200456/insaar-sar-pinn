@@ -22,7 +22,7 @@ import torch
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
-from src.data.dataset import build_dataloader
+from src.data.dataset import ARSDataset, build_dataloader
 from src.data.schemas import (
     ARSDesignParameters,
     ARSTelemetryRecord,
@@ -161,6 +161,16 @@ def build_optimizer(model: torch.nn.Module, lr: float, weight_decay: float) -> A
     )
 
 
+def structures_without_well_data(
+    records: list[ARSTelemetryRecord], sequence_length: int = 52
+) -> list[str]:
+    """Structure ids with no well reading matched to any acquisition in the window used."""
+    dataset = ARSDataset(records, sequence_length=sequence_length)
+    return [
+        dataset[i].structure_id for i in range(len(dataset)) if not bool(dataset[i].has_well_data)
+    ]
+
+
 def load_records_from_json(path: Path) -> list[ARSTelemetryRecord]:
     raw = json.loads(path.read_text())
     return [ARSTelemetryRecord.model_validate(item) for item in raw]
@@ -227,6 +237,17 @@ def train(
 ) -> None:
     device = resolve_device(device)
     log.info("training.start", n_records=len(records), device=device, epochs=epochs)
+    no_wells = structures_without_well_data(records, sequence_length)
+    if no_wells:
+        # Author decision 4: say so. Without wells, only a relative ranking of
+        # recharge is identifiable (experiments/synthetic_recovery/README.md).
+        log.warning(
+            "training.no_well_data",
+            n_without=len(no_wells),
+            n_total=len(records),
+            structure_ids=no_wells[:20],
+            note="InSAR only for these structures: absolute recharge not identifiable",
+        )
 
     loader = build_dataloader(
         records,
@@ -277,6 +298,8 @@ def train(
                 recharge_area_m2=batch["recharge_area_m2"].to(device),
                 catchment_area_m2=batch["catchment_area_m2"].to(device),
                 observation_mask=batch["coherence_mask"].to(device),
+                well_head_m=batch["well_head_m"].to(device),
+                well_mask=batch["well_mask"].to(device),
             )
 
             breakdown.total.backward()

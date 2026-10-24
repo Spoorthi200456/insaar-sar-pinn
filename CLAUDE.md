@@ -76,6 +76,7 @@ textbook result each step relies on. Never skip steps.
 | structure spacing | d_ij | m (haversine) | preprocessing.py |
 | leakance (`ARSNet.leakance`) | L = K′/b′ | 1/day, global, (1e-6, 1e-1), init 1e-3 (provisional, OQ13) | network.py |
 | time step | Δt | days (0 on padded steps) | dataset.py |
+| well head (optional input, `well_head_m`) | h_well | m, absolute; compared with h after removing a per-structure offset; matched within ±3 days (provisional, OQ20; author decision 4) | dataset.py, losses.py |
 | loss scales (`DISPLACEMENT_SCALE_CM`, `RESIDUAL_SCALE_M_PER_DAY`, `HEAD_SCALE_M`) | σ_d, σ_r, σ_h | cm, m/day, m; 0.3, 1e-4, 0.1 (provisional, OQ18); total loss is dimensionless (finding 29) | losses.py |
 
 ## Hard rules

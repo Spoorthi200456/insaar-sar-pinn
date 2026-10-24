@@ -35,6 +35,33 @@ from src.data.preprocessing import (
 from src.data.schemas import ARSTelemetryRecord, GraphEdge
 
 M2_PER_KM2 = 1.0e6
+# A well reading is matched to an InSAR acquisition if it is within this many
+# days of it (author decision 4; PROVISIONAL, docs/open_questions.md OQ20).
+WELL_MATCH_TOLERANCE_DAYS = 3.0
+
+
+def align_wells_to_acquisitions(
+    well_series, insar_ts_s: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    For each acquisition time [unix s], the absolute head [m] of the nearest
+    well reading within WELL_MATCH_TOLERANCE_DAYS, and a mask of matched steps.
+    No readings (or none close enough) -> all-False mask: the structure has no
+    well data, and the well term ignores it.
+    """
+    head = np.zeros(len(insar_ts_s), dtype=np.float64)
+    ok = np.zeros(len(insar_ts_s), dtype=bool)
+    if not well_series:
+        return head, ok
+    w_ts = np.array([w.timestamp.timestamp() for w in well_series], dtype=np.float64)
+    w_h = np.array([w.hydraulic_head_m for w in well_series], dtype=np.float64)
+    gap_days = np.abs(insar_ts_s[:, None] - w_ts[None, :]) / 86400.0
+    nearest = gap_days.argmin(axis=1)
+    ok = gap_days[np.arange(len(insar_ts_s)), nearest] <= WELL_MATCH_TOLERANCE_DAYS
+    head[ok] = w_h[nearest[ok]]
+    return head, ok
+
+
 # ARSNet default gat_num_layers (2) + 1: see GraphBatchSampler.
 DEFAULT_NEIGHBOUR_HOPS = 3
 
@@ -49,6 +76,9 @@ class ARSSample:
     time_delta_days: torch.Tensor  # (T,)
     coherence_mask: torch.Tensor  # (T,) bool, True == reliable observation
     valid_step_mask: torch.Tensor  # (T,) bool, True == real acquisition (not padding)
+    well_head_m: torch.Tensor  # (T,) absolute well head at each acquisition [m] (0 if none)
+    well_mask: torch.Tensor  # (T,) bool, True == a well reading is matched to this step
+    has_well_data: torch.Tensor  # scalar bool: any matched well reading for this structure
     design_features: torch.Tensor  # (Q,)
     coordinates: torch.Tensor  # (2,) lat, lon
     design_recharge_capacity: torch.Tensor  # scalar [m³/day]
@@ -139,6 +169,8 @@ class ARSDataset(Dataset):
         _, _, _, real_t = self._fixed_length(
             disp_filled, rain_aligned, deltas, np.ones(len(sar_sorted), dtype=bool)
         )
+        well_raw, well_ok = align_wells_to_acquisitions(record.well_series, insar_ts)
+        well_t, _, _, well_mask_t = self._fixed_length(well_raw, rain_aligned, deltas, well_ok)
 
         design_vec = np.array(
             [getattr(record.design, name) for name in self.DESIGN_FEATURE_NAMES],
@@ -159,6 +191,9 @@ class ARSDataset(Dataset):
             time_delta_days=torch.tensor(delta_t, dtype=torch.float32),
             coherence_mask=torch.tensor(mask_t, dtype=torch.bool),
             valid_step_mask=torch.tensor(real_t, dtype=torch.bool),
+            well_head_m=torch.tensor(well_t, dtype=torch.float32),
+            well_mask=torch.tensor(well_mask_t, dtype=torch.bool),
+            has_well_data=torch.tensor(bool(well_mask_t.any())),
             design_features=torch.tensor(design_vec_norm, dtype=torch.float32),
             coordinates=torch.tensor(
                 [record.design.latitude, record.design.longitude], dtype=torch.float32
@@ -252,6 +287,9 @@ class ARSCollateFn:
             "time_delta_days": torch.stack([s.time_delta_days for s in samples]),
             "coherence_mask": torch.stack([s.coherence_mask for s in samples]),
             "valid_step_mask": torch.stack([s.valid_step_mask for s in samples]),
+            "well_head_m": torch.stack([s.well_head_m for s in samples]),
+            "well_mask": torch.stack([s.well_mask for s in samples]),
+            "has_well_data": torch.stack([s.has_well_data for s in samples]),
             "design_features": torch.stack([s.design_features for s in samples]),
             "coordinates": torch.stack([s.coordinates for s in samples]),
             "design_recharge_capacity": torch.stack([s.design_recharge_capacity for s in samples]),

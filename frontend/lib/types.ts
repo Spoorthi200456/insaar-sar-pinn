@@ -84,6 +84,9 @@ export interface StructurePrediction {
   recharge_efficiency: number;
   is_underperforming: boolean;
   confidence_interval_m3_per_day: [number, number];
+  /** False = InSAR only: absolute recharge is not identifiable. */
+  has_well_data: boolean;
+  well_head_rmse_m: number | null;
 }
 
 export interface PredictionResponse {

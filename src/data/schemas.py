@@ -332,6 +332,20 @@ class StructurePrediction(StrictModel):
     )
     is_underperforming: bool
     confidence_interval_m3_per_day: tuple[float, float]
+    has_well_data: bool = Field(
+        ...,
+        description=(
+            "True if the record has well-head readings matched to its InSAR acquisitions. "
+            "False: InSAR only - absolute recharge is not identifiable (author decision 4)."
+        ),
+    )
+    well_head_rmse_m: float | None = Field(
+        default=None,
+        description=(
+            "RMS difference [m] between the predicted head change and the well heads after "
+            "removing a constant datum offset; None when there is no well data."
+        ),
+    )
 
     @model_validator(mode="after")
     def _ci_ordered(self) -> StructurePrediction:

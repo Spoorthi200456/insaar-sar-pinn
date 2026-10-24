@@ -72,6 +72,7 @@ TERMS = [
     ("non_negativity_penalty", "Non-negativity penalty", "non_negativity"),
     ("mass_balance_penalty", "Mass-balance penalty", "mass_balance"),
     ("conductivity_smoothness", "T smoothness on graph", "conductivity_smoothness"),
+    ("well_head_misfit", "Well-head misfit [m²] (no wells in this demo)", "well"),
     ("total", "Total (weighted sum)", None),
 ]
 
@@ -132,7 +133,7 @@ def loss_of(loss_fn: CompositeARSLoss, out, batch: dict):
 
 def plot_loss_curves(history: dict[str, list[float]], weights: LossWeights, path: Path) -> None:
     epochs = np.arange(1, len(history["total"]) + 1)
-    fig, axes = plt.subplots(2, 4, figsize=(15, 7), facecolor=SURFACE)
+    fig, axes = plt.subplots(3, 3, figsize=(14, 10), facecolor=SURFACE)
     for ax, (key, title, weight_attr) in zip(axes.flat, TERMS):
         y = np.asarray(history[key])
         ax.set_facecolor(SURFACE)

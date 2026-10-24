@@ -38,3 +38,26 @@ They were chosen **before** the known-answer experiment was run, and not tuned t
   gave 1.75 in cm and 175 in mm.
 - A residual of exactly σ_r at every valid step adds exactly w_pde = 1 to the total. The
   breakdown term stays in (m/day)².
+
+## Well-head term (author decision 4)
+
+Wells report **absolute** head (m above a datum); the model's head h is the change since
+the first InSAR acquisition. So the two can differ by a constant per structure. With
+e_k = h_k − h_well,k on the steps with a matched reading:
+
+L_well = mean over readings of (e_k − ē_i)², where ē_i is the mean of e over structure i's
+readings. Units: m².
+Total contribution: w_well · L_well / σ_h² (dimensionless, σ_h = 0.1 m).
+
+*Plain English:* only the *shape* of the water-level curve is compared, not its height
+above sea level. A structure with no readings adds nothing. The training log lists such
+structures, and the API reports `has_well_data = false` for them.
+
+*Source:* least squares with an unknown constant offset is ordinary least squares on
+de-meaned data (Tarantola 2005 ch. 3; any regression text).
+
+Tests: `tests/test_wells.py`.
+- A 312.5 m datum offset gives a misfit of 0.
+- A de-meaned ±0.2 m mismatch gives 0.02 m² and total 2.0.
+- Structures without readings are ignored.
+- Readings more than 3 days from an acquisition are not used.

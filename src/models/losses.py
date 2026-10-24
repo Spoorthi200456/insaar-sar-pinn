@@ -140,6 +140,7 @@ class LossWeights:
     non_negativity: float = 5.0
     mass_balance: float = 1.0
     conductivity_smoothness: float = 0.1
+    well: float = 1.0
 
 
 @dataclass
@@ -152,6 +153,7 @@ class LossBreakdown:
     non_negativity: torch.Tensor
     mass_balance: torch.Tensor
     conductivity_smoothness: torch.Tensor
+    well: torch.Tensor
 
     def as_dict(self) -> dict[str, float]:
         return {
@@ -163,6 +165,7 @@ class LossBreakdown:
             "non_negativity_penalty": float(self.non_negativity.detach().cpu()),
             "mass_balance_penalty": float(self.mass_balance.detach().cpu()),
             "conductivity_smoothness": float(self.conductivity_smoothness.detach().cpu()),
+            "well_head_misfit": float(self.well.detach().cpu()),
         }
 
 
@@ -211,6 +214,8 @@ class CompositeARSLoss(nn.Module):
         initial_head: torch.Tensor | None = None,  # (B,)  h_i(0) if known
         node_mask: torch.Tensor | None = None,  # (B,) bool, True == seed node (finding 4)
         valid_mask: torch.Tensor | None = None,  # (B, T) bool, True == real acquisition
+        well_head_m: torch.Tensor | None = None,  # (B, T) absolute well head [m] (decision 4)
+        well_mask: torch.Tensor | None = None,  # (B, T) bool, True where a reading exists
     ) -> LossBreakdown:
         w = self.weights
         b, t = predicted_displacement_cm.shape
@@ -264,6 +269,19 @@ class CompositeARSLoss(nn.Module):
         if initial_head is not None:
             init_sq = (predicted_head_change[:, 0] - initial_head) ** 2
             boundary_loss = boundary_loss + (init_sq * node_f).sum() / n_nodes
+
+        # --- Well heads (optional; author decision 4) ----------------------- #
+        # Wells give ABSOLUTE head; the model's h is relative to the first
+        # acquisition, so compare after removing each structure's mean offset:
+        # e_k = h_k - h_well_k,  misfit = mean over readings of (e_k - mean_i e)^2  [m²].
+        # Structures without readings (all-False mask) contribute nothing.
+        well_loss = torch.zeros((), device=predicted_displacement_cm.device)
+        if well_head_m is not None and well_mask is not None:
+            wm = (well_mask & node_rows).float()
+            n_read = wm.sum(dim=1, keepdim=True)
+            err = predicted_head_change - well_head_m
+            offset = (err * wm).sum(dim=1, keepdim=True) / n_read.clamp_min(1.0)
+            well_loss = (((err - offset) ** 2) * wm).sum() / wm.sum().clamp_min(1.0)
 
         # --- Domain-specific regularizers -------------------------------- #
         # Units (review finding 6, docs/math/recharge_units.md): R [m/day] is a
@@ -330,6 +348,7 @@ class CompositeARSLoss(nn.Module):
             + w.non_negativity * non_negativity_loss
             + w.mass_balance * mass_balance_loss
             + w.conductivity_smoothness * smoothness_loss
+            + w.well * well_loss / self.head_scale_m**2
         )
 
         return LossBreakdown(
@@ -341,4 +360,5 @@ class CompositeARSLoss(nn.Module):
             non_negativity=non_negativity_loss,
             mass_balance=mass_balance_loss,
             conductivity_smoothness=smoothness_loss,
+            well=well_loss,
         )

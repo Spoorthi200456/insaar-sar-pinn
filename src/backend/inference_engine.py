@@ -50,6 +50,14 @@ class RawPrediction:
     predicted_displacement_cm: np.ndarray
 
 
+def _well_rmse(head_pred: np.ndarray, well: np.ndarray, mask: np.ndarray) -> float | None:
+    """RMS of predicted-minus-well head after removing the mean offset [m]; None if no wells."""
+    if not mask.any():
+        return None
+    err = head_pred[mask] - well[mask]
+    return float(np.sqrt(np.mean((err - err.mean()) ** 2)))
+
+
 class InferenceEngine:
     def __init__(
         self,
@@ -225,6 +233,9 @@ class InferenceEngine:
         design_capacity = batch["design_recharge_capacity"].numpy()  # m³/day
         recharge_area = batch["recharge_area_m2"].numpy()  # m²
         real_steps = batch["valid_step_mask"].numpy()  # (B, T) bool
+        has_wells = batch["has_well_data"].numpy()
+        well_head = batch["well_head_m"].numpy()
+        well_mask = batch["well_mask"].numpy()
         structure_ids = batch["structure_ids"]
 
         predictions: list[StructurePrediction] = []
@@ -263,6 +274,10 @@ class InferenceEngine:
                     recharge_efficiency=efficiency,
                     is_underperforming=efficiency < recharge_efficiency_threshold,
                     confidence_interval_m3_per_day=ci,
+                    has_well_data=bool(has_wells[i]),
+                    well_head_rmse_m=_well_rmse(
+                        raw["predicted_head_change"][i], well_head[i], well_mask[i]
+                    ),
                 )
             )
         return predictions
