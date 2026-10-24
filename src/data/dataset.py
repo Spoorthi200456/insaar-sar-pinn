@@ -24,7 +24,6 @@ from torch.utils.data import DataLoader, Dataset, Sampler
 
 from src.data.graph import DEFAULT_CONNECTIVITY_RADIUS_KM, StructureGraph
 from src.data.preprocessing import (
-    COHERENCE_THRESHOLD,
     NormalizationStats,
     aggregate_rainfall_to_insar_cadence,
     clamp_displacement,
@@ -33,16 +32,11 @@ from src.data.preprocessing import (
     interpolate_missing_1d,
     time_deltas_days,
 )
-from src.data.schemas import ARSTelemetryRecord, DataQualityFlag, GraphEdge
+from src.data.schemas import ARSTelemetryRecord, GraphEdge
 
-# Observations whose stored value is not the true measurement (clamped to the
-# +/-10 cm bound by the schema, or explicitly missing) must never be used as
-# a data-misfit target.
 M2_PER_KM2 = 1.0e6
 # ARSNet default gat_num_layers (2) + 1: see GraphBatchSampler.
 DEFAULT_NEIGHBOUR_HOPS = 3
-
-_UNRELIABLE_FLAGS = (DataQualityFlag.OUT_OF_BOUNDS_CLAMPED, DataQualityFlag.MISSING)
 
 
 @dataclass
@@ -119,9 +113,9 @@ class ARSDataset(Dataset):
 
         insar_ts = np.array([o.timestamp.timestamp() for o in sar_sorted], dtype=np.float64)
         disp_raw = np.array([o.los_displacement_cm for o in sar_sorted], dtype=np.float64)
-        coherence = np.array([o.coherence for o in sar_sorted], dtype=np.float64)
-        flag_ok = np.array([o.quality_flag not in _UNRELIABLE_FLAGS for o in sar_sorted], dtype=bool)
-        reliable = (coherence >= COHERENCE_THRESHOLD) & flag_ok
+        # One rule for the whole code base: `SARObservation.is_reliable`
+        # (coherence >= COHERENCE_THRESHOLD and not clamped / missing).
+        reliable = np.array([o.is_reliable for o in sar_sorted], dtype=bool)
 
         disp_clamped, _ = clamp_displacement(disp_raw)
         disp_filled, was_interp = interpolate_missing_1d(disp_clamped, reliable)

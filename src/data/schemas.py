@@ -30,6 +30,12 @@ from pydantic import (
     model_validator,
 )
 
+from src.data.preprocessing import COHERENCE_THRESHOLD
+
+# Stored values that are not the true measurement (clamped to the +/-10 cm
+# bound, or missing): never reliable, whatever the coherence.
+UNRELIABLE_FLAGS = frozenset({"out_of_bounds_clamped", "missing"})
+
 
 # --------------------------------------------------------------------------- #
 # Shared primitives
@@ -156,14 +162,16 @@ class SARObservation(StrictModel):
             clamped = math.copysign(9.999, self.los_displacement_cm)
             object.__setattr__(self, "los_displacement_cm", clamped)
             object.__setattr__(self, "quality_flag", DataQualityFlag.OUT_OF_BOUNDS_CLAMPED)
-        elif self.coherence < 0.7 and self.quality_flag == DataQualityFlag.OK:
+        elif self.coherence < COHERENCE_THRESHOLD and self.quality_flag == DataQualityFlag.OK:
             object.__setattr__(self, "quality_flag", DataQualityFlag.LOW_COHERENCE)
         return self
 
     @property
     def is_reliable(self) -> bool:
-        return self.coherence >= 0.7 and self.quality_flag not in (
-            DataQualityFlag.MISSING,
+        """Same rule as `ARSDataset`: coherence >= threshold and not clamped/missing."""
+        return (
+            self.coherence >= COHERENCE_THRESHOLD
+            and self.quality_flag.value not in UNRELIABLE_FLAGS
         )
 
 

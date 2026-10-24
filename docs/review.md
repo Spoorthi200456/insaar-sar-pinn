@@ -289,11 +289,16 @@ author's approval in plan mode before any code changes.
   `quality_flag` not in {`OUT_OF_BOUNDS_CLAMPED`, `MISSING`}.
 - **Test:** `tests/test_dataset.py::TestARSDataset::test_clamped_observation_is_not_a_reliable_target`.
   Verified: **fails on the pre-fix code** (mask was `True`), passes on the fix.
-- **Related, still open:** `src/data/schemas.py:130-133`,
-  `SARObservation.is_reliable`, has the same omission (ignores
-  `OUT_OF_BOUNDS_CLAMPED`, hardcodes 0.7). Not used by the dataset path, but
-  any caller relying on it gets the old behaviour.
-- **Status:** Fixed (dataset path).
+- **Related, fixed in review 2:** `SARObservation.is_reliable` had the same
+  omission (ignored `OUT_OF_BOUNDS_CLAMPED`, hardcoded 0.7). It now uses
+  `COHERENCE_THRESHOLD` and excludes CLAMPED and MISSING, and `ARSDataset` calls
+  it, so there is one rule in one place. Tests:
+  `tests/test_schemas.py::TestIsReliableMatchesDatasetRule` (3). Before: a
+  −14 cm observation at coherence 0.95 (stored −9.999, CLAMPED) was
+  `is_reliable == True`, and `coherent_fraction` was **1.0** instead of 0.5
+  (2 failed). The threshold test passed before too, since both were 0.7; it
+  is a guard against them drifting apart. After: 3 passed.
+- **Status:** Fixed (dataset path and schema).
 
 ---
 

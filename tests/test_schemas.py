@@ -146,3 +146,32 @@ class TestTelemetryBatch:
                 records=[record],
                 edges=[GraphEdge(source_id="ARS-0001", target_id="ARS-9999", weight=0.5)],
             )
+
+
+class TestIsReliableMatchesDatasetRule:
+    """Same rule as the training dataset (review finding 10 / review-2 item)."""
+
+    def _obs(self, d, coh):
+        return SARObservation(structure_id="ARS-0001", timestamp=datetime(2024, 1, 1, tzinfo=timezone.utc),
+                              los_displacement_cm=d, coherence=coh, incidence_angle_deg=35.0)
+
+    def test_clamped_high_coherence_observation_is_not_reliable(self):
+        obs = self._obs(-14.0, 0.95)  # stored as -9.999, flagged CLAMPED
+        assert obs.quality_flag == DataQualityFlag.OUT_OF_BOUNDS_CLAMPED
+        assert obs.is_reliable is False
+
+    def test_coherent_fraction_excludes_clamped(self):
+        ts = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        rec = ARSTelemetryRecord(
+            design=_design(),
+            sar_series=[self._obs(0.1, 0.9), self._obs(-14.0, 0.95)],
+            rainfall_series=[RainfallObservation(structure_id="ARS-0001", timestamp=ts, rainfall_mm=1.0)],
+        )
+        assert rec.coherent_fraction == pytest.approx(0.5)
+
+    def test_threshold_is_the_shared_constant(self):
+        from src.data.preprocessing import COHERENCE_THRESHOLD
+        assert self._obs(0.1, COHERENCE_THRESHOLD).is_reliable is True
+        below = self._obs(0.1, COHERENCE_THRESHOLD - 1e-6)
+        assert below.is_reliable is False
+        assert below.quality_flag == DataQualityFlag.LOW_COHERENCE
