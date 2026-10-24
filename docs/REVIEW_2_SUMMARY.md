@@ -1,8 +1,67 @@
-# Review 2 — summary for a non-expert reader
+# Review 2 (and review 3) — summary for a non-expert reader
 
-*2026-10-24. Branch `review-2`, merged into `main` locally after the author's decisions
-(not pushed; the branch is kept). Everything here is about the code and **synthetic**
-data. No real satellite, rainfall or well data has been used.*
+*2026-10-24. Review 2 is on `main` (merged locally) and on GitHub branch `review-2`.
+Review 3 is on branch `review-3` (not merged, not pushed). Everything here is about the
+code and **synthetic** data. No real satellite, rainfall or well data has been used.*
+
+## Review 3 update: read this first
+
+**The most important new result is a negative one. On structures the model has never
+seen, it cannot yet tell working recharge structures from failing ones.**
+
+Until review 3 the model was trained and tested on the *same* structures. It is like
+giving a student the exam questions as homework: a good score then shows memory, not
+understanding. Review 3 did three things:
+
+1. **Proper exam conditions.** The structures are now divided, with a fixed random seed,
+   into a training set, a validation set and a test set. No structure appears in two sets.
+   Linked neighbouring structures are kept together, so information cannot leak between
+   sets. The model learns only from the training set. The validation set picks which
+   version of the model to keep. The test set is looked at once, at the end.
+2. **The known-answer test re-run on unseen structures** (run 4). 64 simulated
+   structures, of which 10 were held out for testing (6 working, 4 clogged). The
+   pass marks were the same as before, written down before the run.
+   - **Result: no better than a coin.** Ranking ρ = −0.03 and working/failing AUROC =
+     0.54, against the required 0.70 and 0.85.
+   - It was the same when the aquifer constants were given, and when wells were
+     available at the training structures.
+   - The earlier near-perfect results (ρ 0.95, AUROC 1.00) were on structures the model
+     had trained on, and did not carry over.
+3. **The demo re-run on unseen structures.** It reproduces their ground movement well and
+   satisfies the physics, but gives the same recharge for every unseen structure. A good
+   fit to the satellite data does not, by itself, pin down the recharge (the
+   identifiability result below).
+
+**Why, in one sentence:** the model is one network that must learn, from only a few
+dozen examples, a general rule that turns any structure's data into its recharge. It
+learned the examples instead of the rule.
+
+**Most promising next step** (a change of method, so your decision, with a new test
+written down first): the physics part of the model needs no "right answers", only the
+structure's own satellite, rainfall and design data. So the model could be *fitted
+separately to each new structure's own data* when that structure is assessed, rather than
+applying one network trained on others.
+
+Review 3 also fixed the remaining review findings. Each has a test that failed before
+and passes after.
+- **Long records were thrown away (21).** Any total ground movement beyond 10 cm was
+  discarded. In subsiding areas that is most of a long record. Now only an implausible
+  jump between two consecutive passes is flagged.
+- **An invented time interval (22).** The first satellite pass was given a made-up time
+  interval, and *all* rain before monitoring started counted as available water.
+- **The "drift" warning measured nothing useful (23).** It now compares a structure with
+  the training structures.
+- **Extreme rainfall was capped silently (26).** It is now flagged.
+- **The live-update connection sent data the dashboard could not read (27).**
+- **The image branch's statistics were overwritten (28).** Estimating uncertainty
+  silently changed the image branch's internal statistics on every request.
+- **Request-dependent inputs (33).** The API scaled each structure's design data
+  differently depending on which other structures were sent with it.
+
+Three old tests had checked the faulty 10 cm rule itself. They were rewritten to check the
+corrected rule with the same protection; nothing was deleted. Tests: **164 passing,
+3 expected failures**. The expected failures are the known-answer tests that miss their
+pass marks, kept visible on purpose.
 
 ## The question the project asks
 
@@ -145,8 +204,10 @@ than a coin.
   The capacity penalty had in fact been tiny. So that explanation is withdrawn. What is
   visible is that the model fits the satellite data less well in that scenario and
   reaches only 69 % of the true water-level rise. The cause is **not established**.
-- **So:**
-  - The ranking failure was an optimisation problem, and it is now fixed.
+- **So (as of review 2; see the review-3 update above, which overturns the first
+  point for unseen structures):**
+  - The ranking failure was an optimisation problem, and it is now fixed *for the
+    structures the model trained on*.
   - Absolute numbers from InSAR alone are impossible: that is physics.
   - Absolute numbers even with known constants are not yet achieved, for a reason not
     found.
@@ -159,8 +220,11 @@ In the test suite:
 ## What is still NOT proven
 
 - That any of this works on **real** data.
-- That InSAR-only ranking works on real aquifers. It is shown only on synthetic alluvial
-  data, and only with training settings changed after the official test failed.
+- **That the model works on any structure it was not trained on.** On held-out
+  structures (review 3, run 4) it is at chance level. This is the main open problem.
+- That InSAR-only ranking works on real aquifers. On the training structures it was shown
+  only on synthetic alluvial data, and only with training settings changed after the
+  official test failed.
 - **Hard rock** is now out of scope (decision 3): the 0.04 mm signal is invisible to
   Sentinel-1. InSAR might still detect *structural* failure there (dam settlement), which
   is a different signal this model does not look for.
@@ -174,9 +238,8 @@ In the test suite:
 - **Wells at prediction time.** The network learns from wells during training. When you
   submit new data, the API reports whether wells are present and how well the predicted
   water level matches them, but the wells do not change the prediction itself.
-- Seven review findings remain open (21–24, 26–28), for example a ±10 cm limit that would
-  throw away later data in fast-subsiding areas, and the lack of a validation split. See
-  `docs/review.md`.
+- All review findings (1–33) are now fixed (review 3). Whether the image (CV) branch is
+  in scope is still your decision. See `docs/review.md`.
 
 ## What real data is needed next
 

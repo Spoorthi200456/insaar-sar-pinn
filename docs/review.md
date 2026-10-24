@@ -664,3 +664,13 @@ The four fixed findings were re-checked on the current code before any change:
   Full suite after the decisions: **135 passed, 1 xfailed**.
 - Commits on `review-2` with more than one change: `1c6991c` (README claims,
   finding 15, and the dashboard banner, finding 19; both text-only).
+
+### Review 3, end state (2026-10-24, branch `review-3`, not merged, not pushed)
+
+- Fixed: 21, 22, 23, 24, 26, 27, 28, and new finding 33. No review finding
+  remains open; the CV branch's scope is the author's call.
+- Known-answer run 4 on held-out structures FAILS (ρ −0.03, AUROC 0.54 on
+  10 unseen structures): the in-sample results of runs 2–3 do not
+  generalise. See `experiments/synthetic_recovery/README.md`.
+- Full suite: **164 passed, 3 xfailed** (in-sample B, held-out A, held-out B);
+  ruff and black clean; `npm run build` passes.
