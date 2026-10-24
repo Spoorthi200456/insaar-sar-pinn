@@ -81,3 +81,28 @@ class TestExplainEndpoint:
             "GET", "/api/v1/explain/NOT-A-REAL-ID", content=json.dumps(batch)
         )
         assert response.status_code == 404
+
+
+class TestExplainUsesBatchGraph:
+    """Review finding 13: /explain must use the same graph (incl. surveyed edges) as /predict."""
+
+    def test_explain_residual_uses_submitted_edges(self, client, monkeypatch):
+        import src.backend.inference_engine as ie
+
+        captured = {}
+        real = ie.pde_residual
+
+        def spy(*args, **kwargs):
+            captured["adjacency"] = args[5]
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(ie, "pde_residual", spy)
+        payload = _prediction_request_payload(n_structures=2)
+        batch = payload["batch"]
+        a, b = (r["design"]["structure_id"] for r in batch["records"])
+        batch["edges"] = [{"source_id": a, "target_id": b, "weight": 1.0}]  # ~tens of km apart
+        response = client.request("GET", f"/api/v1/explain/{a}", content=json.dumps(batch))
+        assert response.status_code == 200
+        adj = captured["adjacency"]
+        assert adj.shape == (2, 2)
+        assert adj[0, 1].item() > 0 and adj[1, 0].item() > 0  # surveyed edge is present

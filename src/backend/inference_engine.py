@@ -256,7 +256,12 @@ class InferenceEngine:
             )
         return predictions
 
-    def explain(self, records: list[ARSTelemetryRecord], structure_id: str) -> dict[str, float]:
+    def explain(
+        self,
+        records: list[ARSTelemetryRecord],
+        structure_id: str,
+        edges: list[GraphEdge] | None = None,
+    ) -> dict[str, float]:
         """
         Lightweight gradient-based feature attribution + PDE-consistency and
         latent-drift diagnostics for one structure, computed via the eager
@@ -268,7 +273,8 @@ class InferenceEngine:
             raise RuntimeError(
                 "Explainability requires the eager PyTorch model; none is loaded in this engine."
             )
-        batch = self._build_batch_tensors(records, edges=[])
+        # Same graph as `predict` (review finding 13): surveyed edges included.
+        batch = self._build_batch_tensors(records, edges=edges or [])
         idx = batch["structure_ids"].index(structure_id)
 
         design = batch["design_features"].clone().requires_grad_(True)

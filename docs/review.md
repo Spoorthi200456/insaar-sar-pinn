@@ -316,6 +316,7 @@ failed before the fix; see each commit message for the before/after output.
 |---|---|---|---|
 | 11 | `src/models/losses.py::pde_residual` | Flow equation has no sink: head can only rise | **Fixed** |
 | 12 | `src/backend/inference_engine.py::predict` | API verdict compares m/day with m³/day; padding averaged in | **Fixed** |
+| 13 | `src/backend/inference_engine.py::explain`, `api.py` | /explain drops surveyed edges, so its residual uses another graph | **Fixed** |
 
 ## 11. Flow equation has no sink
 
@@ -359,6 +360,21 @@ failed before the fix; see each commit message for the before/after output.
 - **Tests:** `tests/test_inference.py` (4). Before: 4 failed (series length 16
   ≠ 10, efficiency 0.0066 ≠ 0.25, no transmissivity field, displacement
   length 16 ≠ 10). After: 4 passed.
+- **Status:** Fixed.
+
+## 13. /explain uses a different graph from /predict
+
+- **Where:** `inference_engine.py::explain` built its batch with `edges=[]`, and
+  `api.py::explain` never passed `batch.edges`.
+- **Failure scenario:** with surveyed edges between structures beyond the
+  5 km fallback radius, /predict uses them and /explain does not. The
+  "PDE residual norm" shown on the dashboard then comes from different
+  physics than the prediction it is meant to explain.
+- **Fix:** `explain(records, structure_id, edges)`; the endpoint passes the
+  batch's edges.
+- **Test:** `tests/test_api.py::TestExplainUsesBatchGraph`. Before: the physics
+  adjacency seen by the residual had a_01 = **0.0** despite the submitted edge.
+  After: > 0. Passed.
 - **Status:** Fixed.
 
 ---

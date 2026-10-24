@@ -181,7 +181,7 @@ async def explain(structure_id: str, request: Request) -> ExplainabilityResponse
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown structure_id")
 
     try:
-        result = await asyncio.to_thread(engine.explain, batch.records, structure_id)
+        result = await asyncio.to_thread(engine.explain, batch.records, structure_id, batch.edges)
     except RuntimeError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
