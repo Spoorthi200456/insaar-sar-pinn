@@ -231,6 +231,22 @@ author's approval in plan mode before any code changes.
 
 ## Verification log
 
+### Review 2, step 1 (2026-10-24, branch `review-2` from `main` @ `cd55d40`)
+
+The four fixed findings were re-checked on the current code before any change:
+
+- Finding 1 (recharge sign): `src/models/losses.py:99` returns
+  `storage_term - divergence - recharge_m_per_day`, i.e. r = S∂h/∂t − ∇·(T∇h) − R. ✓
+- Finding 3 (S and ÷Δt): `losses.py:87-97` divides by the real Δt and
+  multiplies by S; padding and step 0 are masked. ✓
+- Finding 9 (causal rainfall): `src/data/preprocessing.py:109` uses
+  `searchsorted(side="left")` → bins (t_{k−1}, t_k]; rain after the last
+  acquisition is dropped. ✓
+- Finding 10 (clamped targets): `src/data/dataset.py:115-116` requires
+  coherence ≥ threshold **and** flag ∉ {CLAMPED, MISSING}. ✓
+- Their tests (`TestPDEResidualPhysics` ×4, rainfall binning, clamped target):
+  **6 passed**. Full suite: **60 passed**.
+
 - Pre-fix code was not in git (fixes were applied before `git init`). It was
   reconstructed exactly from the review agent's edit script (which asserted
   the old text before replacing it) in a scratch copy, and the two new tests
