@@ -674,3 +674,15 @@ The four fixed findings were re-checked on the current code before any change:
   generalise. See `experiments/synthetic_recovery/README.md`.
 - Full suite: **164 passed, 3 xfailed** (in-sample B, held-out A, held-out B);
   ruff and black clean; `npm run build` passes.
+
+### Review 4 (2026-10-24, branch `review-4`): method comparison
+
+Protocol committed first (`6f84aa3`), code and tests second (`5816a8f`), one
+run. On 30–31 unseen structures × 5 seeds: A (trained network) fails (ρ −0.05,
+AUROC 0.50); B (per-structure fitting) passes (ρ 0.94, AUROC 1.00); C
+(1-parameter least squares, no network) passes (ρ 0.97, AUROC 1.00). **B is not
+clearly better than C (C won 10 of 10)**: the neural network is not needed for
+ranking/flagging on this synthetic data. Limitations: the simulator is C's
+model; the "threshold" truth could not change structure order. See
+`experiments/method_comparison/README.md`. Tests: 175 fast + slow C protocol
+pass; opt-in A/B seed-0 test (`-m comparison`) passed (17 min).

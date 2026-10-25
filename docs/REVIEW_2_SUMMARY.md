@@ -1,10 +1,49 @@
-# Review 2 (and review 3) — summary for a non-expert reader
+# Reviews 2–4 — summary for a non-expert reader
 
 *2026-10-24. Review 2 is on `main` (merged locally) and on GitHub branch `review-2`.
-Review 3 is on branch `review-3` (not merged, not pushed). Everything here is about the
+Review 3 is merged into local `main` and pushed as branch `review-3`. Review 4 is on
+branch `review-4` (pushed, not merged). Everything here is about the
 code and **synthetic** data. No real satellite, rainfall or well data has been used.*
 
-## Review 3 update: read this first
+## Review 4 update: read this first
+
+**Question asked:** on structures the model has never seen, which of three methods works?
+
+- **A.** The trained neural network, used as is.
+- **B.** The neural network fitted to each new structure's own satellite, rainfall and
+  design data.
+- **C.** A simple non-neural method: one number per structure fitted by ordinary least
+  squares to a textbook water-balance model.
+
+We used 30–31 unseen structures per run and 5 runs with different random seeds. The pass
+marks were written down before anything was run.
+
+**Answer:**
+- **A fails.** It is no better than a coin: average ranking ρ −0.05, working/failing score
+  0.50.
+- **B works.** Ranking ρ 0.94, and it separates every failing structure from every
+  working one.
+- **C works as well or better.** Ranking ρ 0.97, also perfect separation, as good as an
+  "oracle" that knows every hidden constant. It takes a fraction of a second; B takes
+  8–18 minutes.
+- **By the rule fixed beforehand, B is not clearly better than C.** C won all 10 runs.
+  **The neural network is not needed for this part of the problem.**
+
+**Caveats, plainly:**
+- The simulated world follows exactly the simple model that C assumes, so C is favoured.
+- The extra "threshold" test meant to stress C turned out not to change the order of the
+  structures. Every structure shares the same rainfall, so the threshold affects them all
+  alike. That was noticed after the run, and is reported, not hidden.
+- What has *not* been tested is structures that behave differently from each other in ways
+  C cannot describe: gradual clogging, different local thresholds, pumping nearby. That is
+  where the network (method B) could still earn its cost.
+- Everything is synthetic. No method can give absolute recharge from satellite data alone.
+
+**What this suggests (your decision):** use the simple least-squares method (C) as the
+working baseline and benchmark. Keep the physics-informed network only if a future test,
+written down in advance, shows it beating C on the kinds of differences C cannot represent.
+
+## Review 3 update
 
 **The most important new result is a negative one. On structures the model has never
 seen, it cannot yet tell working recharge structures from failing ones.**

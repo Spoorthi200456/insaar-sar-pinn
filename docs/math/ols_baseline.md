@@ -20,7 +20,7 @@ ordinary least squares, solved with a single formula.
 | η | infiltrating fraction, R = η·u | dimensionless |
 | S, S_k, L | storativity, skeletal storage, leakance | –, –, 1/day |
 | τ = S/L | recession time scale | day |
-| g_k(τ) | unit response (head for η/S = 1) | m·day⁻¹… see step 2 |
+| g_k(τ) | unit response: head for η/S = 1 | m |
 | c = η·S_k/S | the one fitted amplitude | dimensionless |
 | d_k | LOS displacement | cm |
 | θ | incidence angle | deg |

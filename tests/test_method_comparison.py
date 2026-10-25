@@ -135,3 +135,33 @@ class TestProtocolSplits:
         assert not (test & set(split.train)) and not (test & set(split.validation))
         failing = {f"SYN-{i:02d}" for i in range(s.cfg.n_structures) if s.failing[i]}
         assert 0 < len(test & failing) < len(test)
+
+
+# --------------------------------------------------------------------------- #
+# Results of the review-4 comparison (experiments/method_comparison/README.md).
+# C is cheap, so its FULL protocol (5 seeds x 2 truths) re-runs in the suite.
+# A and B need ~70 min for the full protocol; their opt-in test re-runs seed 0
+# ("linear") with:  pytest -m comparison
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("truth", ["linear", "threshold"])
+def test_c_meets_pass_marks_on_unseen_structures(truth):
+    from experiments.method_comparison.compare import PASS_AUROC, PASS_RHO, SEEDS, c_only
+
+    runs = [c_only(seed, truth) for seed in SEEDS]
+    rho = np.array([r["spearman"] for r in runs])
+    auc = np.array([r["auroc"] for r in runs])
+    assert rho.mean() >= PASS_RHO and auc.mean() >= PASS_AUROC, (rho, auc)
+
+
+@pytest.mark.slow
+@pytest.mark.comparison
+def test_seed0_a_fails_and_b_passes_on_unseen_structures():
+    from experiments.method_comparison.compare import PASS_AUROC, PASS_RHO, run_seed
+
+    r = run_seed(0, "linear")
+    assert r["B"]["spearman"] >= PASS_RHO and r["B"]["auroc"] >= PASS_AUROC
+    # A (the amortised network) is at chance on unseen structures (run 4, review 4)
+    assert r["A"]["spearman"] < PASS_RHO and r["A"]["auroc"] < PASS_AUROC

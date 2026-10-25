@@ -1,0 +1,439 @@
+{
+  "protocol": "experiments/method_comparison/README.md",
+  "truths": {
+    "linear": {
+      "summary": {
+        "A": {
+          "spearman_mean": -0.048350589453363714,
+          "spearman_sd": 0.33189455924046796,
+          "spearman_min": -0.49176681235285036,
+          "auroc_mean": 0.4968500797448166,
+          "auroc_sd": 0.20159833072372854,
+          "auroc_min": 0.2535885167464115,
+          "passes": false
+        },
+        "B": {
+          "spearman_mean": 0.9361763070077863,
+          "spearman_sd": 0.008393444450152847,
+          "spearman_min": 0.9243604004449388,
+          "auroc_mean": 1.0,
+          "auroc_sd": 0.0,
+          "auroc_min": 1.0,
+          "passes": true
+        },
+        "C": {
+          "spearman_mean": 0.9666713014460513,
+          "spearman_sd": 0.004928180774122681,
+          "spearman_min": 0.9596774193548389,
+          "auroc_mean": 1.0,
+          "auroc_sd": 0.0,
+          "auroc_min": 1.0,
+          "passes": true
+        },
+        "oracle": {
+          "spearman_mean": 0.9667130144605117,
+          "spearman_sd": 0.0055665996525143605,
+          "spearman_min": 0.9588709677419356,
+          "auroc_mean": 1.0,
+          "auroc_sd": 0.0,
+          "auroc_min": 1.0,
+          "passes": true
+        },
+        "B_vs_C": {
+          "mean_rho_difference": -0.030494994438264977,
+          "seeds_won": 0,
+          "clearly_better": false
+        },
+        "A_vs_C": {
+          "mean_rho_difference": -1.015021890899415,
+          "seeds_won": 0,
+          "clearly_better": false
+        },
+        "B_vs_A": {
+          "mean_rho_difference": 0.98452689646115,
+          "seeds_won": 5,
+          "clearly_better": true
+        }
+      },
+      "runs": [
+        {
+          "seed": 0,
+          "truth": "linear",
+          "n_train": 97,
+          "n_validation": 33,
+          "n_test": 30,
+          "n_test_failing": 11,
+          "A": {
+            "spearman": -0.49176681235285036,
+            "auroc": 0.2535885167464115
+          },
+          "B": {
+            "spearman": 0.9319243604004448,
+            "auroc": 1.0
+          },
+          "C": {
+            "spearman": 0.9706340378197997,
+            "auroc": 1.0
+          },
+          "oracle": {
+            "spearman": 0.9692992213570634,
+            "auroc": 1.0
+          },
+          "A_best_epoch": 199,
+          "C_tau_days": 63.09573444801933,
+          "B_median_loss_ratio_after_over_before": 0.3671720624743944,
+          "seconds": {
+            "A_train": 225.3,
+            "B": 657.3,
+            "C": 0.2
+          }
+        },
+        {
+          "seed": 1,
+          "truth": "linear",
+          "n_train": 96,
+          "n_validation": 33,
+          "n_test": 31,
+          "n_test_failing": 12,
+          "A": {
+            "spearman": 0.3423387096774194,
+            "auroc": 0.7192982456140351
+          },
+          "B": {
+            "spearman": 0.9463709677419356,
+            "auroc": 1.0
+          },
+          "C": {
+            "spearman": 0.9713709677419355,
+            "auroc": 1.0
+          },
+          "oracle": {
+            "spearman": 0.9709677419354839,
+            "auroc": 1.0
+          },
+          "A_best_epoch": 509,
+          "C_tau_days": 56.23413251903491,
+          "B_median_loss_ratio_after_over_before": 0.48270486668847556,
+          "seconds": {
+            "A_train": 271.4,
+            "B": 1032.9,
+            "C": 0.3
+          }
+        },
+        {
+          "seed": 2,
+          "truth": "linear",
+          "n_train": 96,
+          "n_validation": 34,
+          "n_test": 30,
+          "n_test_failing": 11,
+          "A": {
+            "spearman": 0.09721913236929922,
+            "auroc": 0.6363636363636364
+          },
+          "B": {
+            "spearman": 0.9243604004449388,
+            "auroc": 1.0
+          },
+          "C": {
+            "spearman": 0.9679644048943271,
+            "auroc": 1.0
+          },
+          "oracle": {
+            "spearman": 0.971523915461624,
+            "auroc": 1.0
+          },
+          "A_best_epoch": 279,
+          "C_tau_days": 63.09573444801933,
+          "B_median_loss_ratio_after_over_before": 0.35818196540766056,
+          "seconds": {
+            "A_train": 284.8,
+            "B": 1087.2,
+            "C": 0.3
+          }
+        },
+        {
+          "seed": 3,
+          "truth": "linear",
+          "n_train": 97,
+          "n_validation": 32,
+          "n_test": 31,
+          "n_test_failing": 11,
+          "A": {
+            "spearman": 0.0866935483870968,
+            "auroc": 0.5545454545454546
+          },
+          "B": {
+            "spearman": 0.9379032258064517,
+            "auroc": 1.0
+          },
+          "C": {
+            "spearman": 0.9596774193548389,
+            "auroc": 1.0
+          },
+          "oracle": {
+            "spearman": 0.9588709677419356,
+            "auroc": 1.0
+          },
+          "A_best_epoch": 229,
+          "C_tau_days": 63.09573444801933,
+          "B_median_loss_ratio_after_over_before": 0.3612031132039065,
+          "seconds": {
+            "A_train": 320.8,
+            "B": 1043.7,
+            "C": 0.3
+          }
+        },
+        {
+          "seed": 4,
+          "truth": "linear",
+          "n_train": 99,
+          "n_validation": 30,
+          "n_test": 31,
+          "n_test_failing": 11,
+          "A": {
+            "spearman": -0.2762375253477836,
+            "auroc": 0.32045454545454544
+          },
+          "B": {
+            "spearman": 0.9403225806451614,
+            "auroc": 1.0
+          },
+          "C": {
+            "spearman": 0.9637096774193549,
+            "auroc": 1.0
+          },
+          "oracle": {
+            "spearman": 0.9629032258064517,
+            "auroc": 1.0
+          },
+          "A_best_epoch": 349,
+          "C_tau_days": 63.09573444801933,
+          "B_median_loss_ratio_after_over_before": 0.3588034967645534,
+          "seconds": {
+            "A_train": 298.4,
+            "B": 837.6,
+            "C": 0.3
+          }
+        }
+      ]
+    },
+    "threshold": {
+      "summary": {
+        "A": {
+          "spearman_mean": -0.018816760869734224,
+          "spearman_sd": 0.2467830686219971,
+          "spearman_min": -0.27786429365962184,
+          "auroc_mean": 0.4944497607655502,
+          "auroc_sd": 0.1431433296392791,
+          "auroc_min": 0.3253588516746411,
+          "passes": false
+        },
+        "B": {
+          "spearman_mean": 0.9176640711902113,
+          "spearman_sd": 0.009789338390289243,
+          "spearman_min": 0.9096774193548388,
+          "auroc_mean": 1.0,
+          "auroc_sd": 0.0,
+          "auroc_min": 1.0,
+          "passes": true
+        },
+        "C": {
+          "spearman_mean": 0.955456062291435,
+          "spearman_sd": 0.008273283337562956,
+          "spearman_min": 0.947983870967742,
+          "auroc_mean": 1.0,
+          "auroc_sd": 0.0,
+          "auroc_min": 1.0,
+          "passes": true
+        },
+        "oracle": {
+          "spearman_mean": 0.9544549499443826,
+          "spearman_sd": 0.009773951623834156,
+          "spearman_min": 0.940725806451613,
+          "auroc_mean": 1.0,
+          "auroc_sd": 0.0,
+          "auroc_min": 1.0,
+          "passes": true
+        },
+        "B_vs_C": {
+          "mean_rho_difference": -0.037791991101223665,
+          "seeds_won": 0,
+          "clearly_better": false
+        },
+        "A_vs_C": {
+          "mean_rho_difference": -0.9742728231611693,
+          "seeds_won": 0,
+          "clearly_better": false
+        },
+        "B_vs_A": {
+          "mean_rho_difference": 0.9364808320599456,
+          "seeds_won": 5,
+          "clearly_better": true
+        }
+      },
+      "runs": [
+        {
+          "seed": 0,
+          "truth": "threshold",
+          "n_train": 97,
+          "n_validation": 33,
+          "n_test": 30,
+          "n_test_failing": 11,
+          "A": {
+            "spearman": -0.27786429365962184,
+            "auroc": 0.3253588516746411
+          },
+          "B": {
+            "spearman": 0.9337041156840934,
+            "auroc": 1.0
+          },
+          "C": {
+            "spearman": 0.9661846496106785,
+            "auroc": 1.0
+          },
+          "oracle": {
+            "spearman": 0.96440489432703,
+            "auroc": 1.0
+          },
+          "A_best_epoch": 229,
+          "C_tau_days": 63.09573444801933,
+          "B_median_loss_ratio_after_over_before": 0.4701479946755832,
+          "seconds": {
+            "A_train": 177.9,
+            "B": 487.9,
+            "C": 0.2
+          }
+        },
+        {
+          "seed": 1,
+          "truth": "threshold",
+          "n_train": 96,
+          "n_validation": 33,
+          "n_test": 31,
+          "n_test_failing": 12,
+          "A": {
+            "spearman": 0.27096774193548384,
+            "auroc": 0.6447368421052632
+          },
+          "B": {
+            "spearman": 0.9100806451612904,
+            "auroc": 1.0
+          },
+          "C": {
+            "spearman": 0.9625000000000001,
+            "auroc": 1.0
+          },
+          "oracle": {
+            "spearman": 0.9633064516129033,
+            "auroc": 1.0
+          },
+          "A_best_epoch": 479,
+          "C_tau_days": 56.23413251903491,
+          "B_median_loss_ratio_after_over_before": 0.5566915548351452,
+          "seconds": {
+            "A_train": 152.2,
+            "B": 440.0,
+            "C": 0.2
+          }
+        },
+        {
+          "seed": 2,
+          "truth": "threshold",
+          "n_train": 96,
+          "n_validation": 34,
+          "n_test": 30,
+          "n_test_failing": 11,
+          "A": {
+            "spearman": 0.10255839822024472,
+            "auroc": 0.5885167464114832
+          },
+          "B": {
+            "spearman": 0.9159065628476083,
+            "auroc": 1.0
+          },
+          "C": {
+            "spearman": 0.950611790878754,
+            "auroc": 1.0
+          },
+          "oracle": {
+            "spearman": 0.950611790878754,
+            "auroc": 1.0
+          },
+          "A_best_epoch": 269,
+          "C_tau_days": 56.23413251903491,
+          "B_median_loss_ratio_after_over_before": 0.44798933339984137,
+          "seconds": {
+            "A_train": 153.3,
+            "B": 463.0,
+            "C": 0.2
+          }
+        },
+        {
+          "seed": 3,
+          "truth": "threshold",
+          "n_train": 97,
+          "n_validation": 32,
+          "n_test": 31,
+          "n_test_failing": 11,
+          "A": {
+            "spearman": 0.0870967741935484,
+            "auroc": 0.5545454545454546
+          },
+          "B": {
+            "spearman": 0.9096774193548388,
+            "auroc": 1.0
+          },
+          "C": {
+            "spearman": 0.9500000000000002,
+            "auroc": 1.0
+          },
+          "oracle": {
+            "spearman": 0.940725806451613,
+            "auroc": 1.0
+          },
+          "A_best_epoch": 339,
+          "C_tau_days": 56.23413251903491,
+          "B_median_loss_ratio_after_over_before": 0.4922908510517311,
+          "seconds": {
+            "A_train": 183.1,
+            "B": 634.3,
+            "C": 0.2
+          }
+        },
+        {
+          "seed": 4,
+          "truth": "threshold",
+          "n_train": 99,
+          "n_validation": 30,
+          "n_test": 31,
+          "n_test_failing": 11,
+          "A": {
+            "spearman": -0.27684242503832623,
+            "auroc": 0.35909090909090907
+          },
+          "B": {
+            "spearman": 0.918951612903226,
+            "auroc": 1.0
+          },
+          "C": {
+            "spearman": 0.947983870967742,
+            "auroc": 1.0
+          },
+          "oracle": {
+            "spearman": 0.953225806451613,
+            "auroc": 1.0
+          },
+          "A_best_epoch": 339,
+          "C_tau_days": 56.23413251903491,
+          "B_median_loss_ratio_after_over_before": 0.4759571302668445,
+          "seconds": {
+            "A_train": 246.3,
+            "B": 691.7,
+            "C": 0.2
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,8 +1,8 @@
 # Project status — InSAR–PINN monitoring of Artificial Recharge Structures
 
-*Updated 2026-10-24 after review 3 (branch `review-3`, not merged, not pushed). All numbers
-are from **SYNTHETIC DATA**. No real Sentinel-1, rainfall or well data has been run through
-the model.*
+*Updated 2026-10-24 after review 4 (branch `review-4`, pushed to origin; not merged into
+`main`). All numbers are from **SYNTHETIC DATA**. No real Sentinel-1, rainfall or well data
+has been run through the model.*
 
 **Goal (fixed):** assess whether Artificial Recharge Structures (ARS) in India are working
 (recharging the aquifer) or failing (clogging, leakage, structural damage), using freely
@@ -10,7 +10,32 @@ available InSAR, rainfall and design data, constrained by groundwater physics.
 
 **Scope (author decision 3):** satellite-only monitoring of **alluvial aquifers only**.
 
-## Headline
+## Review 4 (2026-10-24): method comparison on unseen structures (read first)
+
+Three methods were compared on 30–31 held-out structures per seed, 5 seeds, 2 synthetic
+truths. The protocol and pass marks were committed before any run
+(`experiments/method_comparison/README.md`).
+
+| method | mean ρ ± sd ("linear" truth) | mean AUROC | passes? |
+|---|---|---|---|
+| A: trained network applied unchanged | −0.05 ± 0.33 | 0.50 | **no**: chance level |
+| B: network fitted to each structure's own data | 0.936 ± 0.008 | 1.00 | yes |
+| C: least squares on a 1-parameter physical model, **no network** | **0.967 ± 0.005** | 1.00 | yes |
+| oracle (all constants known) | 0.967 ± 0.006 | 1.00 | — |
+
+- **B is not clearly better than C. C beat B in all 10 seed-truth runs.** So the neural
+  network is not needed for ranking structures and flagging failing ones, on this
+  synthetic data.
+- Per-structure fitting (B) does fix the generalisation failure of the trained network,
+  but at about 3000× the compute of C, and never better.
+- **Caveat:** the simulator *is* C's model, and the "threshold" robustness truth could not
+  change the structures' order (one shared rainfall series). That was noticed after the
+  run and reported. Behaviours that differ between structures (progressive clogging,
+  local thresholds, pumping) have not been tested; that is where a richer model could
+  still matter.
+- Absolute recharge remains unidentifiable from InSAR alone, for every method.
+
+## Headline (review 3; still true for the trained network, method A above)
 
 **On structures it has never seen, the model cannot yet tell working structures from
 failing ones.**
@@ -81,6 +106,7 @@ rewritten to the per-interval rule with the same guarantee, as listed in commit 
 | 2 | diagnostic, lr for global scalars | training structures | 0.95 / 1.00 | 0.44 | 0.93 / 1.00 | A met, B failed |
 | 3 | current code after decisions 1, 2, 4 | training structures | 0.95 / 1.00 | 0.42 | 0.96 / 1.00 | A met, B failed |
 | **4** | **current code, held-out (review 3)** | **10 unseen test structures** | **−0.03 / 0.54** | **0.49** | −0.32 / 0.42 (wells at train only) | **FAIL** |
+| review 4 | A / B / C comparison, 5 seeds | 30–31 unseen per seed | A −0.05 / 0.50; B 0.94 / 1.00; C 0.97 / 1.00 | — | — | A fails; B, C pass; B not better than C |
 
 Thresholds (pre-registered, never moved): A needs ρ ≥ 0.70 and AUROC ≥ 0.85; B needs median
 relative error ≤ max(0.30, 2 × oracle floor). Runs 2–4 used protocols revised after run 1.
@@ -106,7 +132,7 @@ byte-identical.
    (only R/S).
 4. **Hard rock**: out of scope.
 
-## Most promising next step (a method change; needs the author's decision and a new pre-registered test)
+## Next step: review 3 proposal, tested in review 4 (it works, but a 1-parameter least-squares fit works as well or better)
 
 The physics and data terms of the loss need **no ground truth**: they use only a
 structure's own InSAR, rainfall and design data. So instead of applying one trained

@@ -254,3 +254,29 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def c_only(seed: int, truth: str) -> dict:
+    """Method C alone for one seed/truth (same data, split and code path as run_seed)."""
+    sim = simulate_seed(seed, truth)
+    records, split = make_split(sim, seed)
+    by_id = {r.design.structure_id: r for r in records}
+    index = {r.design.structure_id: i for i, r in enumerate(records)}
+    k = sim.cfg.n_acquisitions
+    train_ds = ARSDataset([by_id[s] for s in split.train], sequence_length=k)
+    test_ds = ARSDataset(
+        [by_id[s] for s in split.test],
+        sequence_length=k,
+        design_feature_normalizers=train_ds._design_stats,
+    )
+    score, tau = M.method_c_scores(
+        [train_ds[i] for i in range(len(train_ds))], [test_ds[i] for i in range(len(test_ds))]
+    )
+    test_idx = np.array([index[s] for s in split.test])
+    r_true = sim.recharge[test_idx, 1:].mean(axis=1)
+    working = ~sim.failing[test_idx]
+    return {
+        "spearman": float(spearmanr(score, r_true).statistic),
+        "auroc": rr.auroc(score, working),
+        "tau": tau,
+    }

@@ -115,3 +115,97 @@ R·S_k/S is; review 2), for any of the three methods.
   numbers.
 
 Pass marks and rules will not be changed after the run.
+
+---
+
+## Results (one run of the protocol; commits `6f84aa3` protocol, `5816a8f` code)
+
+Files: `results.json` (per seed, per method, summary) and `results.csv` (per test
+structure). 30–31 held-out test structures per seed (11–12 failing). Runtime about 70 min on
+CPU, almost all of it A's training and B's per-structure fitting; C takes 0.2–0.3 s per
+seed.
+
+### "linear" truth (headline)
+
+| method | Spearman ρ, mean ± sd (min) | AUROC, mean ± sd (min) | pass mark (ρ ≥ 0.70, AUROC ≥ 0.85) |
+|---|---|---|---|
+| A trained network | **−0.05 ± 0.33** (−0.49) | **0.50 ± 0.20** (0.25) | **FAIL** |
+| B per-structure fitting | 0.936 ± 0.008 (0.924) | 1.000 ± 0 (1.000) | pass |
+| C least squares, no network | **0.967 ± 0.005** (0.960) | 1.000 ± 0 (1.000) | pass |
+| oracle (every constant known) | 0.967 ± 0.006 (0.959) | 1.000 ± 0 (1.000) | — |
+
+Per seed, ρ for A / B / C:
+- seed 0: −0.49 / 0.93 / 0.97
+- seed 1: 0.34 / 0.95 / 0.97
+- seed 2: 0.10 / 0.92 / 0.97
+- seed 3: 0.09 / 0.94 / 0.96
+- seed 4: −0.28 / 0.94 / 0.96
+
+### "threshold" truth (robustness)
+
+| method | Spearman ρ, mean ± sd (min) | AUROC, mean ± sd (min) | pass mark |
+|---|---|---|---|
+| A | −0.02 ± 0.25 (−0.28) | 0.49 ± 0.14 (0.33) | **FAIL** |
+| B | 0.918 ± 0.010 (0.910) | 1.000 ± 0 | pass |
+| C | **0.955 ± 0.008** (0.948) | 1.000 ± 0 | pass |
+| oracle | 0.954 ± 0.010 (0.941) | 1.000 ± 0 | — |
+
+### Comparison rules (as pre-registered)
+
+| comparison | truth | mean ρ difference | seeds won | clearly better? |
+|---|---|---|---|---|
+| **B vs C** | linear | **−0.030** | **0 of 5** | **NO** |
+| **B vs C** | threshold | **−0.038** | **0 of 5** | **NO** |
+| A vs C | both | −1.02 / −0.97 | 0 of 5 | no |
+| B vs A | both | +0.98 / +0.94 | 5 of 5 | yes |
+
+**Verdict: B is not clearly better than C. On the contrary, C beat B in every one of the
+10 seed-truth runs. The neural network is not needed for this part of the problem**
+(ranking structures by recharge and separating working from failing ones, from InSAR,
+rainfall and design data, on structures not used for fitting). On this synthetic data a
+one-parameter least-squares fit with one regional recession time does as well as an oracle
+that knows every constant.
+
+### Other observations
+
+- **A, the trained network applied unchanged, is at chance on unseen structures in every
+  seed.** That confirms run 4 (review 3) with 30+ test structures and 5 seeds. Its spread
+  across seeds is large (ρ from −0.49 to +0.34): it is not even consistently wrong.
+- **B rescues the network** (B vs A: +0.98, 5 of 5 seeds). Fitting the physics-informed
+  model to each structure's own data works. But it is never better than the 1-parameter
+  fit and costs about 3000× more compute (8–18 min per seed against 0.2–0.3 s). B lowered
+  each structure's own loss to about 36–56 % of its starting value (median per seed).
+- C's recession time was 56–63 days in every run, against 60 days in the simulator.
+
+### Limitations: read before drawing conclusions
+
+1. **The simulator is C's model.** The "linear" truth is exactly C's assumption: a linear
+   reservoir with recharge proportional to rain. C matching the oracle there is expected.
+2. **The "threshold" truth turned out to be a weaker robustness check than intended.**
+   This was noticed after the run and is reported, not changed. All structures share one
+   regional rainfall series, so the threshold changes the *time shape* of recharge
+   identically for every structure. It scales nothing differently between them, so it
+   cannot change their order, which is all ρ and AUROC measure. A real test of C's
+   robustness needs truths that differ *between* structures in ways C's single amplitude
+   cannot express, for example:
+   - progressive clogging (a working structure whose infiltration declines over the
+     series);
+   - structure-specific thresholds or recession times;
+   - local rain differences;
+   - pumping near some structures.
+
+   Those are where a richer model such as B might earn its cost. They have not been
+   tested.
+3. All the earlier caveats still hold:
+   - synthetic data;
+   - a compliant (alluvial) aquifer with a signal well above noise;
+   - absolute recharge not identifiable from InSAR alone, for any of the three methods.
+
+### Tests
+
+`tests/test_method_comparison.py`:
+- **`test_c_meets_pass_marks_on_unseen_structures`** (slow, in the normal suite):
+  re-runs C's full protocol (5 seeds × 2 truths) in about 1 minute. It passes.
+- **`test_seed0_a_fails_and_b_passes_on_unseen_structures`** (opt-in, about 20 min:
+  `pytest -m comparison`): re-runs A and B on seed 0, "linear". It asserts that B meets
+  the marks and that A does not.
