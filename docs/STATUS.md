@@ -1,8 +1,8 @@
 # Project status — InSAR–PINN monitoring of Artificial Recharge Structures
 
-*Updated 2026-10-24 after review 4 (branch `review-4`, pushed to origin; not merged into
-`main`). All numbers are from **SYNTHETIC DATA**. No real Sentinel-1, rainfall or well data
-has been run through the model.*
+*Updated 2026-10-27 after review 5 (branch `review-5`, pushed to origin; not merged into
+`main`; review 4 is merged into local `main`). All numbers are from **SYNTHETIC DATA**. No
+real Sentinel-1, rainfall or well data has been run through the model.*
 
 **Goal (fixed):** assess whether Artificial Recharge Structures (ARS) in India are working
 (recharging the aquifer) or failing (clogging, leakage, structural damage), using freely
@@ -10,7 +10,51 @@ available InSAR, rainfall and design data, constrained by groundwater physics.
 
 **Scope (author decision 3):** satellite-only monitoring of **alluvial aquifers only**.
 
-## Review 4 (2026-10-24): method comparison on unseen structures (read first)
+## Review 5 (2026-10-27): least squares is the default; a harder test (read first)
+
+**Author decisions carried out**
+- Method C (least squares, no network, `src/models/ols_baseline.py`) is now the
+  **default** in the API and dashboard.
+- The neural network remains selectable as `neural_experimental`, labelled
+  EXPERIMENTAL everywhere.
+
+**Harder test** (`experiments/harder_comparison/README.md`; protocol committed before the
+simulator code and before any run)
+- **The world is not C's model.** It has:
+  - rain that differs per structure;
+  - structure-specific runoff thresholds;
+  - gradual clogging;
+  - pumping near 30 % of structures;
+  - per-structure drainage times.
+- **Design:** 5 seeds, 30–32 unseen structures each.
+
+| method | ρ_amount (mean ± sd) | AUROC_now (mean ± sd) | passes (0.70 / 0.85)? |
+|---|---|---|---|
+| A: trained network, unchanged (= the API's `neural_experimental`) | 0.21 ± 0.18 | 0.57 ± 0.13 | **no** |
+| B: network fitted to each structure | **0.66 ± 0.06** | **0.95 ± 0.03** | **no** (ρ short; AUROC passes) |
+| C: least squares, no network (= the API default) | 0.53 ± 0.05 | 0.90 ± 0.05 | **no** (ρ short; AUROC passes) |
+
+- **B is clearly better than C** by the pre-registered rule. It is ahead on both metrics
+  in all 5 seeds (ρ +0.14, AUROC +0.05). The advantage is mostly on **gradually clogging**
+  structures: AUROC 0.95 against 0.88. On structures that failed from the start, the two
+  are close (0.95 vs 0.93).
+- **No method meets the ranking mark.**
+- **A is near chance for the third time.** The API's experimental option is A, not B.
+  B is not in the API.
+- **Caveat:** this simulator was designed to contain what C cannot represent, so it
+  favours a flexible method, just as review 4's favoured C. Which world real structures
+  resemble is unknown until real data is used.
+- **What this means for the default (author's decision, not changed):** C is still the
+  only cheap method, and it detects working vs failing at AUROC 0.90. It is clearly
+  worse than B at following clogging. B costs about 20–60 s per structure on CPU.
+
+Tests:
+- Full suite: **209 passed, 4 xfailed**. The new xfail is C's missed ranking mark, with
+  its numbers.
+- Opt-in A/B seed-0 check: see `experiments/harder_comparison/README.md`.
+- ruff and black are clean, and `npm run build` passes.
+
+## Review 4 (2026-10-24): method comparison on unseen structures
 
 Three methods were compared on 30–31 held-out structures per seed, 5 seeds, 2 synthetic
 truths. The protocol and pass marks were committed before any run

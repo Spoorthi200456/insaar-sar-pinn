@@ -1,11 +1,69 @@
-# Reviews 2–4 — summary for a non-expert reader
+# Reviews 2–5 — summary for a non-expert reader
 
 *2026-10-24. Review 2 is on `main` (merged locally) and on GitHub branch `review-2`.
-Review 3 is merged into local `main` and pushed as branch `review-3`. Review 4 is on
-branch `review-4` (pushed, not merged). Everything here is about the
+Review 3 is merged into local `main` and pushed as branch `review-3`. Review 4 is
+merged into local `main` and pushed as branch `review-4`. Review 5 is on branch `review-5`
+(pushed, not merged). GitHub's `main` is not yet updated (see review 5 below). Everything here is about the
 code and **synthetic** data. No real satellite, rainfall or well data has been used.*
 
-## Review 4 update: read this first
+## Review 5 update: read this first
+
+**What you decided, and what was done**
+1. **Review 4 merged into `main`.** Merged locally, and the branch is kept. **Not
+   pushed:** the project's own settings forbid `git push origin main`, and GitHub's `main`
+   has an unrelated placeholder commit. You need to run the push yourself (see the final
+   report).
+2. **The simple least-squares method (C) is now the default** in the API and the
+   dashboard. The neural network can still be chosen, and is labelled "experimental"
+   everywhere.
+3. **A harder, fairer test was written down first, then run once.**
+
+**The harder test, in plain words**
+
+Review 4's simulated world followed exactly the simple rule C assumes. This time the world
+was built to break that rule in the ways real structures differ:
+- each structure gets its own rain;
+- each catchment needs a different amount of rain before water runs off;
+- some structures slowly clog up during the record;
+- some have an irrigation well pumping nearby in winter;
+- each drains at its own speed.
+
+We tested 30–32 unseen structures per run, over 5 runs.
+
+**Results**
+- **Fitting the neural network to each structure (B) was clearly better than the simple
+  method (C)**, in every run, at both tasks:
+  - **Ranking structures by how much they recharge:** B 0.66, C 0.53, on a scale where 1
+    is perfect and 0 is guessing.
+  - **Telling working from failing structures:** B 0.95, C 0.90, on a scale where 1 is
+    perfect and 0.5 is a coin toss.
+- **B's advantage is mostly on structures that clog gradually.** C fits one fixed number
+  per structure, so it cannot see that a structure worked last year and has stopped now.
+- **But no method reached the ranking pass mark of 0.70.**
+- **The trained network used as is (A) was near chance again.** That is the method behind
+  the dashboard's "experimental" option. The better method B is not in the API.
+
+**What this means (your decision)**
+
+The two tests disagree because their worlds were built differently:
+- in a world that follows the simple rule, the simple method is as good as perfect
+  knowledge;
+- in a world built to break that rule, fitting the network per structure wins, but is
+  still not good enough at ranking.
+
+Only real data can say which world Indian recharge structures are closer to. Practical
+options:
+- keep C as the cheap default for flagging structures that never worked;
+- add method B as an optional, slower "deep check" for possible clogging, which would be
+  a new change with its own tests;
+- replace the experimental option A by B.
+
+I have not changed the default.
+
+**Caveat:** I designed this world to contain what C cannot do. It is therefore tilted
+towards a flexible method, just as review 4's was tilted towards C.
+
+## Review 4 update
 
 **Question asked:** on structures the model has never seen, which of three methods works?
 

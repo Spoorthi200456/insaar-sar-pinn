@@ -686,3 +686,18 @@ ranking/flagging on this synthetic data. Limitations: the simulator is C's
 model; the "threshold" truth could not change structure order. See
 `experiments/method_comparison/README.md`. Tests: 175 fast + slow C protocol
 pass; opt-in A/B seed-0 test (`-m comparison`) passed (17 min).
+
+### Review 5 (2026-10-27, branch `review-5`): C as default; harder comparison
+
+- Method C moved into `src/models/ols_baseline.py`, with per-structure rain. Review 4's
+  numbers reproduce exactly.
+- C is now the API and dashboard default. The network is `neural_experimental`.
+- Protocol committed first (`4c0384e`), simulator and code second (`2403497`), one run.
+- On a field-like simulator that is not C's model (30–32 unseen structures × 5 seeds):
+  - A: ρ 0.21, AUROC 0.57, fails;
+  - B: ρ 0.66, AUROC 0.95, misses the ρ mark;
+  - C: ρ 0.53, AUROC 0.90, misses the ρ mark.
+- **B is clearly better than C** (both metrics, 5 of 5 seeds), mostly on gradual
+  clogging.
+- No method passes. C's miss is `xfail(strict=True)`. See
+  `experiments/harder_comparison/README.md`.
