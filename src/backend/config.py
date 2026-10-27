@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     cors_allow_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
     max_batch_structures: int = 256
     default_recharge_threshold: float = 0.30
+    # Default method C's regional recession time [day]; None = fit per request.
+    ols_tau_days: float | None = None
 
     # WebSocket streaming
     ws_max_queue_size: int = 1000

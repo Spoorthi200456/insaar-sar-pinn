@@ -123,8 +123,10 @@ def test_api_prediction_says_whether_well_data_was_present():
 
     recs = make_synthetic_records(n_structures=2, n_timesteps=8, seed=3)
     recs[0] = _with_wells(recs[0], 100.0 + np.arange(8) * 0.1)
+    # Well data are used by the network path (the default least-squares method ignores
+    # them), so select it explicitly (review 5).
     preds = InferenceEngine(onnx_path=None, torch_checkpoint_path=None, sequence_length=8).predict(
-        recs
+        recs, method="neural_experimental"
     )
     assert preds[0].has_well_data is True and preds[0].well_head_rmse_m is not None
     assert preds[1].has_well_data is False and preds[1].well_head_rmse_m is None

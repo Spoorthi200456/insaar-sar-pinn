@@ -11,10 +11,12 @@ from src.data.schemas import PredictionRequest, TelemetryBatch
 from src.training.train import make_synthetic_records
 
 
-def _prediction_request_payload(n_structures: int = 3, n_timesteps: int = 12) -> dict:
+def _prediction_request_payload(
+    n_structures: int = 3, n_timesteps: int = 12, method: str = "ols_baseline"
+) -> dict:
     records = make_synthetic_records(n_structures=n_structures, n_timesteps=n_timesteps, seed=7)
     batch = TelemetryBatch(batch_id=uuid4(), records=records, edges=[])
-    request = PredictionRequest(batch=batch, recharge_efficiency_threshold=0.3)
+    request = PredictionRequest(batch=batch, recharge_efficiency_threshold=0.3, method=method)
     return json.loads(request.model_dump_json())
 
 
@@ -35,7 +37,9 @@ class TestHealthEndpoint:
 
 class TestPredictEndpoint:
     def test_predict_returns_one_prediction_per_structure(self, client):
-        payload = _prediction_request_payload(n_structures=4)
+        # T and the m3/day series come from the network path (review 5: optional,
+        # experimental), so select it explicitly.
+        payload = _prediction_request_payload(n_structures=4, method="neural_experimental")
         response = client.post("/api/v1/predict", json=payload)
         assert response.status_code == 200
         body = response.json()

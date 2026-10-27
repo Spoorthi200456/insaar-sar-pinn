@@ -6,6 +6,10 @@ Sentinel-1 InSAR line-of-sight (LOS) displacement with a physics-informed
 model of groundwater flow and poroelastic deformation.
 Core code: `src/models/` (network, layers, losses), `src/data/` (schemas, preprocessing, dataset).
 `src/backend/` and `frontend/` are deployment plumbing — NOT the research contribution.
+Default assessment method in the API and dashboard (author decision, review 5):
+method C, least squares on a linear-reservoir model, no neural network
+(`src/models/ols_baseline.py`, docs/math/ols_baseline.md). The network is the
+optional `neural_experimental` method, labelled EXPERIMENTAL everywhere.
 
 ## What must NOT change (the goal) vs. what MAY change (the method)
 - Fixed goal: assess whether Artificial Recharge Structures in India are

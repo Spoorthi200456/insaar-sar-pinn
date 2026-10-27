@@ -6,6 +6,10 @@ R·A [m³/day] (A = recharge area, finding 6), so
   predicted_recharge_series_m3_per_day = R·A
   recharge_efficiency = mean over REAL steps of R·A / Q_design   [dimensionless]
 The network's `hydraulic_conductivity` output is transmissivity T [m²/day].
+
+Since review 5 the network is the optional "neural_experimental" method (the
+default is least squares, tests/test_assessment_method.py), so these tests of the
+network path select it explicitly.
 """
 
 from __future__ import annotations
@@ -69,14 +73,16 @@ def engine(monkeypatch):
 
 
 def test_recharge_series_is_volume_rate_on_real_steps(engine):
-    pred = engine.predict(_records())[0]
+    pred = engine.predict(_records(), method="neural_experimental")[0]
     series = np.array(pred.predicted_recharge_series_m3_per_day)
     assert series.shape == (N_REAL,)  # padding not reported
     assert np.allclose(series, R_TRUE * AREA, rtol=1e-5)  # 10 m³/day
 
 
 def test_efficiency_is_dimensionless_ratio_of_volume_rates(engine):
-    preds = engine.predict(_records(), recharge_efficiency_threshold=0.3)
+    preds = engine.predict(
+        _records(), recharge_efficiency_threshold=0.3, method="neural_experimental"
+    )
     for p in preds:
         assert p.recharge_efficiency == pytest.approx(R_TRUE * AREA / Q_DESIGN, rel=1e-5)  # 0.25
         assert p.is_underperforming is True  # 0.25 < 0.3
@@ -85,7 +91,7 @@ def test_efficiency_is_dimensionless_ratio_of_volume_rates(engine):
 
 
 def test_transmissivity_reported_with_its_units(engine):
-    p = engine.predict(_records())[0]
+    p = engine.predict(_records(), method="neural_experimental")[0]
     assert p.transmissivity_m2_per_day == pytest.approx(12.0)
 
 
@@ -93,7 +99,7 @@ def test_displacement_series_aligned_with_observations(engine):
     # The dashboard plots predicted_displacement_cm against the record's own
     # sar_series timestamps, so it must have one value per real acquisition.
     recs = _records()
-    p = engine.predict(recs)[0]
+    p = engine.predict(recs, method="neural_experimental")[0]
     assert len(p.predicted_displacement_cm) == len(recs[0].sar_series) == N_REAL
 
 
@@ -121,10 +127,14 @@ def test_concurrent_requests_never_predict_with_dropout_on():
 
     model.forward = spy
     records = _records()
-    a = threading.Thread(target=eng.predict, args=(records,), name="A")
+    a = threading.Thread(
+        target=eng.predict, args=(records,), kwargs={"method": "neural_experimental"}, name="A"
+    )
     a.start()
     assert in_mc.wait(10.0)
-    b = threading.Thread(target=eng.predict, args=(records,), name="B")
+    b = threading.Thread(
+        target=eng.predict, args=(records,), kwargs={"method": "neural_experimental"}, name="B"
+    )
     b.start()
     a.join(30.0)
     b.join(30.0)
@@ -184,7 +194,7 @@ class TestRelativeRankingWithoutWells:
 
     def test_no_wells_gives_ranking_and_no_percentage(self, monkeypatch):
         eng = self._scored_engine(monkeypatch, [0.002, 0.006, 0.004])
-        preds = eng.predict(self._three_records(with_wells=False))
+        preds = eng.predict(self._three_records(with_wells=False), method="neural_experimental")
         assert [p.relative_recharge_rank for p in preds] == [3, 1, 2]
         assert [p.relative_recharge_percentile for p in preds] == pytest.approx([0.0, 1.0, 0.5])
         for p in preds:
@@ -196,14 +206,20 @@ class TestRelativeRankingWithoutWells:
     def test_ranking_is_unchanged_by_a_common_scale_factor(self, monkeypatch):
         # the unidentifiable global factor (S_k/S) cannot change the ranking
         a = self._scored_engine(monkeypatch, [0.002, 0.006, 0.004]).predict(
-            self._three_records(False)
+            self._three_records(False), method="neural_experimental"
         )
-        b = self._scored_engine(monkeypatch, [0.02, 0.06, 0.04]).predict(self._three_records(False))
+        b = self._scored_engine(monkeypatch, [0.02, 0.06, 0.04]).predict(
+            self._three_records(False), method="neural_experimental"
+        )
         assert [p.relative_recharge_rank for p in a] == [p.relative_recharge_rank for p in b]
 
     def test_wells_give_percentage_marked_provisional(self, monkeypatch):
         eng = self._scored_engine(monkeypatch, [0.002, 0.006, 0.004])
-        preds = eng.predict(self._three_records(with_wells=True), recharge_efficiency_threshold=0.3)
+        preds = eng.predict(
+            self._three_records(with_wells=True),
+            recharge_efficiency_threshold=0.3,
+            method="neural_experimental",
+        )
         assert preds[0].recharge_efficiency == pytest.approx(0.002 * AREA / Q_DESIGN, rel=1e-5)
         assert preds[0].is_underperforming is True  # 0.002*2500/40 = 0.125 < 0.3
         assert preds[1].is_underperforming is False  # 0.006*2500/40 = 0.375 >= 0.3

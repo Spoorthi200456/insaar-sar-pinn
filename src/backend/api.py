@@ -6,8 +6,11 @@ FastAPI service exposing the InSAR-PINN ARS model.
 Endpoints
 ---------
 GET  /api/v1/health                          liveness/readiness probe
-POST /api/v1/predict                         batch REST inference
+POST /api/v1/predict                         batch REST inference; "method" selects
+                                             ols_baseline (default, no neural network)
+                                             or neural_experimental
 GET  /api/v1/explain/{structure_id}           feature attribution + drift diagnostics
+                                             (neural network only: EXPERIMENTAL)
 WS   /ws/telemetry                             high-throughput streaming inference
 """
 
@@ -29,6 +32,7 @@ from pydantic import ValidationError
 from src.backend.config import settings
 from src.backend.inference_engine import InferenceEngine
 from src.data.schemas import (
+    DEFAULT_ASSESSMENT_METHOD,
     ExplainabilityResponse,
     PredictionRequest,
     PredictionResponse,
@@ -56,6 +60,7 @@ async def lifespan(app: FastAPI):
         sequence_length=settings.sequence_length,
         design_feature_dim=settings.design_feature_dim,
         preferred_providers=settings.preferred_providers,
+        ols_tau_days=settings.ols_tau_days,
     )
     log.info(
         "api.model_loaded",
@@ -120,6 +125,8 @@ async def health() -> dict:
         "backend": engine.backend_name if engine else None,
         "active_provider": engine.active_provider if engine else None,
         "environment": settings.environment,
+        "default_method": DEFAULT_ASSESSMENT_METHOD,
+        "experimental_methods": ["neural_experimental"],
     }
 
 
@@ -139,6 +146,7 @@ async def predict(payload: PredictionRequest) -> PredictionResponse:
             payload.batch.records,
             payload.batch.edges,
             payload.recharge_efficiency_threshold,
+            payload.method,
         )
     except Exception as exc:  # noqa: BLE001 - surfaced as a clean 500 with context
         log.error("predict.inference_failed", error=str(exc))
@@ -257,6 +265,7 @@ async def telemetry_stream(websocket: WebSocket) -> None:
                     request_payload.batch.records,
                     request_payload.batch.edges,
                     request_payload.recharge_efficiency_threshold,
+                    request_payload.method,
                 )
             except Exception as exc:  # noqa: BLE001
                 log.error("ws.inference_failed", error=str(exc))

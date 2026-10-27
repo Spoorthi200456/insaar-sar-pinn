@@ -319,24 +319,49 @@ class TelemetryBatch(StrictModel):
 # --------------------------------------------------------------------------- #
 
 
+# Assessment methods (author decision, review 5). "ols_baseline" is method C of
+# experiments/method_comparison: least squares on a linear-reservoir model, no
+# neural network (src/models/ols_baseline.py). "neural_experimental" is the
+# physics-informed network, which ranked unseen synthetic structures no better
+# than chance in reviews 3-4.
+AssessmentMethod = Literal["ols_baseline", "neural_experimental"]
+DEFAULT_ASSESSMENT_METHOD: AssessmentMethod = "ols_baseline"
+
+
 class PredictionRequest(StrictModel):
     batch: TelemetryBatch
     recharge_efficiency_threshold: Annotated[float, Field(ge=0.0, le=1.0)] = 0.30
+    method: AssessmentMethod = Field(
+        default=DEFAULT_ASSESSMENT_METHOD,
+        description=(
+            "ols_baseline (default): least squares, no neural network. "
+            "neural_experimental: the physics-informed network, EXPERIMENTAL."
+        ),
+    )
 
 
 class StructurePrediction(StrictModel):
     structure_id: str
-    hydraulic_conductivity_m_per_day: float = Field(
+    method: AssessmentMethod = Field(..., description="Which method produced this prediction.")
+    method_note: str = Field(..., description="One-line description of the method and its status.")
+    hydraulic_conductivity_m_per_day: float | None = Field(
         ...,
         description=(
             "DEPRECATED name, kept for API compatibility: holds transmissivity T in "
             "m2/day, NOT conductivity K in m/day (K = T/b needs the aquifer thickness b, "
-            "unknown, docs/open_questions.md OQ15). Use transmissivity_m2_per_day."
+            "unknown, docs/open_questions.md OQ15). Use transmissivity_m2_per_day. "
+            "None for ols_baseline, which does not estimate T."
         ),
     )
-    transmissivity_m2_per_day: float = Field(..., description="Fitted transmissivity T [m2/day].")
-    predicted_recharge_series_m3_per_day: list[float] = Field(
-        ..., description="Recharge volume rate R*A [m3/day], one value per real acquisition."
+    transmissivity_m2_per_day: float | None = Field(
+        ..., description="Fitted transmissivity T [m2/day]; None for ols_baseline."
+    )
+    predicted_recharge_series_m3_per_day: list[float] | None = Field(
+        ...,
+        description=(
+            "Recharge volume rate R*A [m3/day], one value per real acquisition. None for "
+            "ols_baseline: it estimates recharge only up to the unknown factor S/S_k."
+        ),
     )
     predicted_displacement_cm: list[float] = Field(
         ..., description="Predicted LOS displacement [cm], one value per real acquisition."
@@ -353,12 +378,19 @@ class StructurePrediction(StrictModel):
     is_underperforming: bool | None = Field(
         ..., description="recharge_efficiency < threshold; null when there is no efficiency."
     )
+    relative_recharge_score: float = Field(
+        ...,
+        description=(
+            "The ranking score: mean recharge volume rate / Q_design, times an unknown factor "
+            "common to all structures of one request (S_k/S). Only its ORDER is meaningful."
+        ),
+    )
     relative_recharge_rank: int = Field(
         ...,
         ge=1,
         description=(
             "1 = highest recharge relative to design capacity among the structures submitted "
-            "together (score mean(R*A)/Q_design). Scale-free, so valid from InSAR alone."
+            "together (relative_recharge_score). Scale-free, so valid from InSAR alone."
         ),
     )
     relative_recharge_percentile: float = Field(
@@ -366,7 +398,9 @@ class StructurePrediction(StrictModel):
     )
     assessment_basis: Literal["relative_ranking_insar_only", "well_calibrated_provisional"]
     assessment_note: str = Field(..., description="One-line explanation of the basis.")
-    confidence_interval_m3_per_day: tuple[float, float]
+    confidence_interval_m3_per_day: tuple[float, float] | None = Field(
+        ..., description="~90 % interval of mean R*A [m3/day]; None for ols_baseline."
+    )
     has_well_data: bool = Field(
         ...,
         description=(
@@ -384,6 +418,8 @@ class StructurePrediction(StrictModel):
 
     @model_validator(mode="after")
     def _ci_ordered(self) -> StructurePrediction:
+        if self.confidence_interval_m3_per_day is None:
+            return self
         lo, hi = self.confidence_interval_m3_per_day
         if lo > hi:
             raise ValueError("confidence interval lower bound exceeds upper bound")

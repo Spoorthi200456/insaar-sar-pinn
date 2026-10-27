@@ -29,7 +29,14 @@ import torch
 
 from src.data.dataset import ARSDataset, make_collate_fn
 from src.data.preprocessing import NormalizationStats
-from src.data.schemas import ARSTelemetryRecord, GraphEdge, StructurePrediction
+from src.data.schemas import (
+    DEFAULT_ASSESSMENT_METHOD,
+    ARSTelemetryRecord,
+    AssessmentMethod,
+    GraphEdge,
+    StructurePrediction,
+)
+from src.models import ols_baseline as ols
 from src.models.losses import pde_residual
 from src.models.network import ARSNet, latent_drift
 
@@ -60,6 +67,29 @@ NOTE_WELLS = (
     "Well-calibrated estimate; the percentage still depends on the fitted storativity S, "
     "which wells alone do not determine (provisional)."
 )
+
+
+NOTE_OLS = (
+    "Default method: least squares on a linear-reservoir model, no neural network "
+    "(recession time {tau:.0f} days); ranked unseen synthetic structures as well as an "
+    "oracle in review 4."
+)
+NOTE_NEURAL = (
+    "EXPERIMENTAL: the trained neural network ranked unseen synthetic structures no better "
+    "than chance (reviews 3-4); prefer the default ols_baseline method."
+)
+
+
+def _ranks(scores: list[float]) -> np.ndarray:
+    """1 = highest score; ties keep submission order."""
+    order = np.argsort(-np.asarray(scores), kind="stable")
+    rank = np.empty(len(scores), dtype=int)
+    rank[order] = np.arange(1, len(scores) + 1)
+    return rank
+
+
+def _percentile(rank: int, n: int) -> float:
+    return float((n - rank) / (n - 1)) if n > 1 else 1.0
 
 
 def _well_rmse(head_pred: np.ndarray, well: np.ndarray, mask: np.ndarray) -> float | None:
@@ -107,8 +137,12 @@ class InferenceEngine:
         sequence_length: int = 52,
         design_feature_dim: int = 3,
         preferred_providers: list[str] | None = None,
+        ols_tau_days: float | None = None,
     ) -> None:
         self.sequence_length = sequence_length
+        # Method C's regional recession time [day]; None = fit it on each request's
+        # structures (least squares, no ground truth needed).
+        self.ols_tau_days = ols_tau_days
         self.design_feature_dim = design_feature_dim
         self.preferred_providers = preferred_providers or [
             "TensorrtExecutionProvider",
@@ -269,9 +303,81 @@ class InferenceEngine:
         records: list[ARSTelemetryRecord],
         edges: list[GraphEdge] | None = None,
         recharge_efficiency_threshold: float = 0.30,
+        method: AssessmentMethod = DEFAULT_ASSESSMENT_METHOD,
     ) -> list[StructurePrediction]:
         edges = edges or []
         batch = self._build_batch_tensors(records, edges)
+        if method == "ols_baseline":
+            return self._predict_ols(batch)
+        if method == "neural_experimental":
+            return self._predict_neural(batch, recharge_efficiency_threshold)
+        raise ValueError(f"unknown assessment method {method!r}")
+
+    def _predict_ols(self, batch: dict) -> list[StructurePrediction]:
+        """
+        Method C (src/models/ols_baseline.py): one least-squares amplitude per
+        structure from its own InSAR and rain, no network. Absolute recharge is not
+        identifiable from InSAR alone, so only a ranking is reported; well data are
+        not used by this method.
+        """
+        real_steps = batch["valid_step_mask"].numpy()
+        reliable = batch["coherence_mask"].numpy() & real_steps
+        series = [
+            ols.OLSSeries(
+                displacement_cm=batch["displacement_cm"][i].double().numpy(),
+                reliable=reliable[i],
+                cos_theta=float(np.cos(np.radians(float(batch["incidence_angle_deg"][i])))),
+                rain_per_step_mm=batch["rainfall_mm"][i].double().numpy(),
+                dt_days=batch["time_delta_days"][i].double().numpy(),
+            )
+            for i in range(len(batch["structure_ids"]))
+        ]
+        tau = self.ols_tau_days if self.ols_tau_days is not None else ols.fit_tau(series)
+        design_capacity = batch["design_recharge_capacity"].numpy()
+        recharge_area = batch["recharge_area_m2"].numpy()
+        has_wells = batch["has_well_data"].numpy()
+
+        fits = [ols.fit_amplitude(s, tau) for s in series]
+        scores = []
+        for i, (s, (c, _)) in enumerate(zip(series, fits, strict=True)):
+            cap = float(design_capacity[i]) if design_capacity[i] > 1e-6 else 1e-6
+            # mean recharge volume rate / Q_design, up to the common factor S_k/S
+            scores.append(ols.mean_relative_recharge(s, c) * float(recharge_area[i]) / cap)
+        rank = _ranks(scores)
+        n = len(scores)
+        note = NOTE_OLS.format(tau=tau)
+
+        predictions = []
+        for i, structure_id in enumerate(batch["structure_ids"]):
+            c, g = fits[i]
+            d_pred = ols.predicted_displacement_cm(series[i], c, g)[real_steps[i]]
+            predictions.append(
+                StructurePrediction(
+                    structure_id=structure_id,
+                    method="ols_baseline",
+                    method_note=note,
+                    hydraulic_conductivity_m_per_day=None,
+                    transmissivity_m2_per_day=None,
+                    predicted_recharge_series_m3_per_day=None,
+                    predicted_displacement_cm=[float(v) for v in d_pred],
+                    recharge_efficiency=None,
+                    is_underperforming=None,
+                    relative_recharge_score=float(scores[i]),
+                    relative_recharge_rank=int(rank[i]),
+                    relative_recharge_percentile=_percentile(int(rank[i]), n),
+                    assessment_basis="relative_ranking_insar_only",
+                    assessment_note=NOTE_INSAR_ONLY,
+                    confidence_interval_m3_per_day=None,
+                    has_well_data=bool(has_wells[i]),
+                    well_head_rmse_m=None,
+                )
+            )
+        return predictions
+
+    def _predict_neural(
+        self, batch: dict, recharge_efficiency_threshold: float
+    ) -> list[StructurePrediction]:
+        """The physics-informed network: EXPERIMENTAL (reviews 3-4)."""
 
         if self._session is not None:
             raw = self._run_onnx(batch)
@@ -297,9 +403,7 @@ class InferenceEngine:
             v = raw["recharge_rate"][i][real] * recharge_area[i]
             cap = float(design_capacity[i]) if design_capacity[i] > 1e-6 else 1e-6
             scores.append(float(np.mean(v)) / cap if v.size else 0.0)
-        order = np.argsort(-np.asarray(scores), kind="stable")
-        rank = np.empty(len(scores), dtype=int)
-        rank[order] = np.arange(1, len(scores) + 1)
+        rank = _ranks(scores)
         n = len(scores)
 
         predictions: list[StructurePrediction] = []
@@ -329,6 +433,8 @@ class InferenceEngine:
             predictions.append(
                 StructurePrediction(
                     structure_id=structure_id,
+                    method="neural_experimental",
+                    method_note=NOTE_NEURAL,
                     hydraulic_conductivity_m_per_day=t_value,
                     transmissivity_m2_per_day=t_value,
                     predicted_recharge_series_m3_per_day=[float(v) for v in volume_series],
@@ -339,8 +445,9 @@ class InferenceEngine:
                     is_underperforming=(
                         efficiency < recharge_efficiency_threshold if has_wells[i] else None
                     ),
+                    relative_recharge_score=float(scores[i]),
                     relative_recharge_rank=int(rank[i]),
-                    relative_recharge_percentile=(float((n - rank[i]) / (n - 1)) if n > 1 else 1.0),
+                    relative_recharge_percentile=_percentile(int(rank[i]), n),
                     assessment_basis=(
                         "well_calibrated_provisional"
                         if has_wells[i]
@@ -363,7 +470,8 @@ class InferenceEngine:
         edges: list[GraphEdge] | None = None,
     ) -> dict[str, float]:
         """
-        Lightweight gradient-based feature attribution + PDE-consistency and
+        EXPERIMENTAL: neural network only (the default ols_baseline method has no
+        attributions). Lightweight gradient-based feature attribution + PDE-consistency and
         latent-drift diagnostics for one structure, computed via the eager
         PyTorch model (falls back to loading the torch checkpoint on demand
         if the engine is currently ONNX-only).

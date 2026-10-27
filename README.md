@@ -51,9 +51,14 @@ uvicorn src.backend.api:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 REST inference: `POST http://localhost:8000/api/v1/predict`
+(`"method": "ols_baseline"` is the **default**: least squares on a linear-reservoir
+model, no neural network, `src/models/ols_baseline.py`. `"method":
+"neural_experimental"` selects the physics-informed network, which is
+**experimental**: it ranked unseen synthetic structures no better than chance in
+reviews 3–4, `experiments/method_comparison/README.md`.)
 Streaming telemetry: `ws://localhost:8000/ws/telemetry`
 Health: `GET http://localhost:8000/api/v1/health`
-Model explainability: `GET http://localhost:8000/api/v1/explain/{structure_id}`
+Model explainability: `GET http://localhost:8000/api/v1/explain/{structure_id}` (neural network only, experimental)
 
 ## Quickstart (frontend)
 
