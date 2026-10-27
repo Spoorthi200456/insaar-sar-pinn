@@ -4,6 +4,8 @@ Methods B and C of the review-4 comparison (protocol: README.md in this folder).
 B  test_time_fit: per-structure physics-informed fitting at assessment time.
 C  unit_response / ols_amplitude / fit_tau: ordinary least squares on a
    linear-reservoir model, no neural network. Derivation: docs/math/ols_baseline.md.
+   Since review 5 the formulas live in src/models/ols_baseline.py (used by the API);
+   this module keeps review 4's one-shared-rain-series interface.
 """
 
 from __future__ import annotations
@@ -14,11 +16,15 @@ import numpy as np
 import torch
 
 from src.models.losses import CompositeARSLoss, LossWeights
+from src.models.ols_baseline import (  # noqa: F401  (re-exported for compare.py and tests)
+    CM_PER_M,
+    TAU_GRID_DAYS,
+    ols_amplitude,
+    unit_response,
+)
 from src.training.train import GLOBAL_SCALARS, full_batch
 
-# ---- method C (fixed by the protocol) ----
-TAU_GRID_DAYS = np.logspace(1.0, 3.0, 41)  # 10 ... 1000 days
-CM_PER_M = 100.0
+# ---- method C (fixed by the protocol): formulas from src/models/ols_baseline.py ----
 
 # ---- method B (fixed by the protocol) ----
 B_STEPS = 300
@@ -28,34 +34,6 @@ B_LR = 1e-3
 # --------------------------------------------------------------------------- #
 # C: ordinary least squares, no network
 # --------------------------------------------------------------------------- #
-
-
-def unit_response(p_step_mm: np.ndarray, dt_days: np.ndarray, tau_days: float) -> np.ndarray:
-    """
-    Head of a linear reservoir with unit storativity driven by u_k = P_k/(1000 dt_k)
-    [m/day], backward Euler with h_0 = 0:  g_k = (g_{k-1} + dt_k u_k) / (1 + dt_k / tau).
-    Steps with dt = 0 (the reference acquisition, padding) keep g unchanged... at 0.
-    """
-    p = np.asarray(p_step_mm, dtype=float)
-    dt = np.asarray(dt_days, dtype=float)
-    g = np.zeros(len(p))
-    for k in range(1, len(p)):
-        if dt[k] <= 0:
-            g[k] = g[k - 1]
-            continue
-        u = p[k] / 1000.0 / dt[k]
-        g[k] = (g[k - 1] + dt[k] * u) / (1.0 + dt[k] / tau_days)
-    return g
-
-
-def ols_amplitude(d_cm: np.ndarray, reliable: np.ndarray, cos_theta: float, g: np.ndarray) -> float:
-    """Least-squares c in d_k = 100 cos(theta) c g_k over reliable epochs: c = sum w d / sum w^2."""
-    w = CM_PER_M * cos_theta * np.asarray(g, dtype=float)
-    m = np.asarray(reliable, dtype=bool)
-    denom = float(np.sum(w[m] ** 2))
-    if denom <= 0:
-        return 0.0
-    return float(np.sum(w[m] * np.asarray(d_cm, dtype=float)[m]) / denom)
 
 
 def _series(data, i):

@@ -60,6 +60,37 @@ the squared residuals. Keep the τ with the smallest total. Test structures are 
 regional), so ĉ ranks structures exactly as η does. Absolute recharge is not available
 (identifiability, review 2).
 
+## Step 7 (review 5). Structures with their own rain, and the score used by the API
+
+Nothing in steps 1–4 requires the rain to be the same for every structure: g_k is built
+from **that structure's own** P_k and Δt_k. Review 4 used one regional series only because
+its simulator had one. `src/models/ols_baseline.py` computes g per structure.
+
+When rain differs between structures, ĉ ranks the **efficiency** η (the fraction of rain
+that recharges), not the **amount** of recharge. Under C's model the recharge flux is
+
+R_k = η u_k = (S/S_k) · ĉ · u_k   [m/day],
+
+so the mean recharge flux over the intervals (Δt_k > 0) is (S/S_k) · ĉ · mean_k(u_k).
+S/S_k is unknown but common to all structures, so
+
+**score_amount = ĉ · mean_k(u_k)**   [m/day × an unknown common factor]
+
+ranks structures by mean recharge exactly as the true flux does. With one shared rain
+series, mean_k(u_k) is the same for all structures, and score_amount orders them exactly
+as ĉ does (review 4 is unchanged).
+
+The API ranks by score_amount · A / Q_design: recharge volume rate relative to design
+capacity, the same quantity as the network's ranking score mean(R·A)/Q_design (author
+decision 5). C gives no percentage: that needs S_k/S, which InSAR cannot provide.
+
+*Tests:* `tests/test_ols_baseline.py`. These check that:
+- ĉ = η S_k/S with each structure's own rain;
+- τ is recovered from structures with different rain;
+- the same η with 3× the rain gives 3× score_amount but the same ĉ;
+- score_amount = (true mean flux) × S_k/S exactly on noise-free data;
+- review 4's code calls these same functions (its numbers reproduce exactly).
+
 ## What C assumes that may be wrong
 
 - Recharge proportional to rain. The "threshold" truth of the comparison breaks this on
