@@ -70,28 +70,45 @@ export interface TelemetryBatch {
   edges: GraphEdge[];
 }
 
+/**
+ * Assessment method (review 5). "ols_baseline" (DEFAULT): least squares on a
+ * linear-reservoir model, no neural network. "neural_experimental": the
+ * physics-informed network, which ranked unseen synthetic structures no better
+ * than chance in reviews 3-4.
+ */
+export type AssessmentMethod = "ols_baseline" | "neural_experimental";
+export const DEFAULT_METHOD: AssessmentMethod = "ols_baseline";
+
 export interface PredictionRequest {
   batch: TelemetryBatch;
   recharge_efficiency_threshold: number;
+  method?: AssessmentMethod;
 }
 
 export interface StructurePrediction {
   structure_id: string;
-  /** DEPRECATED name: holds transmissivity T [m2/day], not K. Use transmissivity_m2_per_day. */
-  hydraulic_conductivity_m_per_day: number;
-  transmissivity_m2_per_day: number;
-  predicted_recharge_series_m3_per_day: number[];
+  method: AssessmentMethod;
+  method_note: string;
+  /** DEPRECATED name: holds transmissivity T [m2/day], not K. Null for ols_baseline. */
+  hydraulic_conductivity_m_per_day: number | null;
+  /** Null for ols_baseline (it does not estimate T). */
+  transmissivity_m2_per_day: number | null;
+  /** Null for ols_baseline (recharge only up to an unknown factor). */
+  predicted_recharge_series_m3_per_day: number[] | null;
   predicted_displacement_cm: number[];
   /** Only with well data (author decision 5); null for InSAR-only structures. */
   recharge_efficiency: number | null;
   is_underperforming: boolean | null;
+  /** Ranking score; only its order is meaningful. */
+  relative_recharge_score: number;
   /** 1 = highest recharge relative to design among the submitted structures. */
   relative_recharge_rank: number;
   /** 1 = highest, 0 = lowest. */
   relative_recharge_percentile: number;
   assessment_basis: "relative_ranking_insar_only" | "well_calibrated_provisional";
   assessment_note: string;
-  confidence_interval_m3_per_day: [number, number];
+  /** Null for ols_baseline. */
+  confidence_interval_m3_per_day: [number, number] | null;
   /** False = InSAR only: absolute recharge is not identifiable. */
   has_well_data: boolean;
   well_head_rmse_m: number | null;
@@ -118,6 +135,8 @@ export interface HealthResponse {
   backend: string | null;
   active_provider: string | null;
   environment: string;
+  default_method?: AssessmentMethod;
+  experimental_methods?: AssessmentMethod[];
 }
 
 export interface WSPredictionMessage {

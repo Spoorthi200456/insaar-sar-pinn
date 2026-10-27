@@ -22,6 +22,7 @@ interface PointDatum {
   rank: number | null;
   percentile: number | null;
   note: string;
+  method: StructurePrediction["method"] | null;
   hasPrediction: boolean;
 }
 
@@ -66,6 +67,7 @@ export default function MapView({
           rank: pred?.relative_recharge_rank ?? null,
           percentile: pred?.relative_recharge_percentile ?? null,
           note: pred?.assessment_note ?? "",
+          method: pred?.method ?? null,
           hasPrediction: pred !== undefined,
         };
       }),
@@ -130,6 +132,9 @@ export default function MapView({
           style={{ left: hoverInfo.x + 12, top: hoverInfo.y + 12 }}
         >
           <div className="font-semibold text-slate-100">{hoverInfo.point.structure_id}</div>
+          {hoverInfo.point.method === "neural_experimental" && (
+            <div className="text-warn-400">Neural network (experimental)</div>
+          )}
           {hoverInfo.point.hasPrediction && hoverInfo.point.efficiency === null ? (
             <>
               <div className="text-slate-400">

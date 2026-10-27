@@ -7,7 +7,9 @@ import MapView from "./MapView";
 import TimeSeriesChart from "./TimeSeriesChart";
 import { ApiError, getHealth, openTelemetryStream, predict } from "@/lib/api";
 import { DEFAULT_SCENARIO, generateScenarioBatch } from "@/lib/synthetic";
+import { DEFAULT_METHOD } from "@/lib/types";
 import type {
+  AssessmentMethod,
   HealthResponse,
   ScenarioControls,
   StructurePrediction,
@@ -19,6 +21,7 @@ type StreamStatus = "connecting" | "open" | "closed" | "error" | "idle";
 
 export default function Dashboard() {
   const [controls, setControls] = useState<ScenarioControls>(DEFAULT_SCENARIO);
+  const [method, setMethod] = useState<AssessmentMethod>(DEFAULT_METHOD);
   const [batch, setBatch] = useState<TelemetryBatch>(() => generateScenarioBatch(DEFAULT_SCENARIO));
   const [predictions, setPredictions] = useState<Map<string, StructurePrediction>>(new Map());
   const [selectedStructureId, setSelectedStructureId] = useState<string | null>(null);
@@ -43,11 +46,11 @@ export default function Dashboard() {
   }, []);
 
   const runInference = useCallback(
-    async (targetBatch: TelemetryBatch, threshold: number) => {
+    async (targetBatch: TelemetryBatch, threshold: number, chosen: AssessmentMethod) => {
       setIsLoading(true);
       setErrorMessage(null);
       try {
-        const response = await predict(targetBatch, threshold);
+        const response = await predict(targetBatch, threshold, chosen);
         const next = new Map<string, StructurePrediction>();
         for (const p of response.predictions) next.set(p.structure_id, p);
         setPredictions(next);
@@ -73,11 +76,11 @@ export default function Dashboard() {
     setBatch(nextBatch);
     setSelectedStructureId(null);
     if (streamingEnabled && streamRef.current) {
-      streamRef.current.send(nextBatch, controls.rechargeEfficiencyThreshold);
+      streamRef.current.send(nextBatch, controls.rechargeEfficiencyThreshold, method);
     } else {
-      void runInference(nextBatch, controls.rechargeEfficiencyThreshold);
+      void runInference(nextBatch, controls.rechargeEfficiencyThreshold, method);
     }
-  }, [controls, streamingEnabled, runInference]);
+  }, [controls, method, streamingEnabled, runInference]);
 
   useEffect(() => {
     if (!streamingEnabled) {
@@ -102,7 +105,7 @@ export default function Dashboard() {
       (status) => setStreamStatus(status)
     );
     streamRef.current = handle;
-    handle.send(batch, controls.rechargeEfficiencyThreshold);
+    handle.send(batch, controls.rechargeEfficiencyThreshold, method);
 
     return () => {
       handle.close();
@@ -116,10 +119,10 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (streamingEnabled && streamRef.current) {
-      streamRef.current.send(batch, controls.rechargeEfficiencyThreshold);
+      streamRef.current.send(batch, controls.rechargeEfficiencyThreshold, method);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [controls.rechargeEfficiencyThreshold]);
+  }, [controls.rechargeEfficiencyThreshold, method]);
 
   const selectedRecord = useMemo(
     () => batch.records.find((r) => r.design.structure_id === selectedStructureId) ?? null,
@@ -139,7 +142,11 @@ export default function Dashboard() {
         ? calibrated.reduce((sum, p) => sum + (p.recharge_efficiency ?? 0), 0) / calibrated.length
         : null;
     const insarOnly = values.length - calibrated.length;
+    const shownMethod = values[0]?.method ?? null;
+    const methodNote = values[0]?.method_note ?? null;
     return {
+      shownMethod,
+      methodNote,
       total: batch.records.length,
       scored: values.length,
       underperforming,
@@ -156,7 +163,8 @@ export default function Dashboard() {
             InSAR-PINN Artificial Recharge Structure Monitor
           </h1>
           <p className="text-xs text-slate-500">
-            Physics-informed deformation inversion over Sentinel-1 InSAR + rainfall telemetry
+            Recharge ranking from Sentinel-1 InSAR + rainfall telemetry (default: least
+            squares, no neural network)
           </p>
         </div>
         <div className="flex items-center gap-4 text-xs text-slate-400">
@@ -182,6 +190,20 @@ export default function Dashboard() {
       <div className="border-b border-warn-500/30 bg-warn-500/10 px-5 py-1.5 text-xs text-warn-400">
         SYNTHETIC DATA, PROVISIONAL PHYSICS. These outputs are a demonstration of the
         pipeline, not an assessment of any real recharge structure (see docs/STATUS.md).
+        {summary.shownMethod && (
+          <span
+            className={`block ${
+              summary.shownMethod === "neural_experimental" ? "font-semibold text-danger-400" : ""
+            }`}
+          >
+            Method:{" "}
+            {summary.shownMethod === "ols_baseline"
+              ? "least squares (default)"
+              : "neural network (EXPERIMENTAL)"}
+            {" \u2014 "}
+            {summary.methodNote}
+          </span>
+        )}
         {summary.insarOnly > 0 && (
           <span className="block">
             {summary.insarOnly} structure(s) have no well data: shown as a relative recharge
@@ -201,6 +223,8 @@ export default function Dashboard() {
           <ControlPanel
             controls={controls}
             onChange={setControls}
+            method={method}
+            onMethodChange={setMethod}
             onRunInference={regenerateAndRun}
             isLoading={isLoading}
             streamingEnabled={streamingEnabled}
@@ -227,6 +251,9 @@ export default function Dashboard() {
           <div className="panel h-full">
             <div className="panel-header">
               <h2 className="text-sm font-semibold text-slate-200">Explainability</h2>
+              <span className="stat-pill bg-warn-500/20 text-warn-400">
+                neural network, experimental
+              </span>
             </div>
             <ExplainabilityPanel structureId={selectedStructureId} batch={batch} />
           </div>

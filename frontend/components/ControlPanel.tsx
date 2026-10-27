@@ -1,10 +1,12 @@
 "use client";
 
-import type { ScenarioControls } from "@/lib/types";
+import type { AssessmentMethod, ScenarioControls } from "@/lib/types";
 
 interface ControlPanelProps {
   controls: ScenarioControls;
   onChange: (controls: ScenarioControls) => void;
+  method: AssessmentMethod;
+  onMethodChange: (method: AssessmentMethod) => void;
   onRunInference: () => void;
   isLoading: boolean;
   streamingEnabled: boolean;
@@ -77,6 +79,8 @@ const STREAM_STATUS_STYLE: Record<ControlPanelProps["streamStatus"], string> = {
 export default function ControlPanel({
   controls,
   onChange,
+  method,
+  onMethodChange,
   onRunInference,
   isLoading,
   streamingEnabled,
@@ -133,6 +137,33 @@ export default function ControlPanel({
       </div>
 
       <div className="space-y-3 border-t border-base-700 px-4 py-4">
+        <fieldset className="space-y-1.5 text-xs text-slate-300">
+          <legend className="mb-1 text-slate-400">Assessment method</legend>
+          <label className="flex items-center gap-2">
+            <input
+              type="radio"
+              name="method"
+              checked={method === "ols_baseline"}
+              onChange={() => onMethodChange("ols_baseline")}
+              className="accent-accent-500"
+            />
+            <span>Least squares, no neural network (default)</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="radio"
+              name="method"
+              checked={method === "neural_experimental"}
+              onChange={() => onMethodChange("neural_experimental")}
+              className="accent-warn-500"
+            />
+            <span>
+              Neural network{" "}
+              <span className="stat-pill bg-warn-500/20 text-warn-400">experimental</span>
+            </span>
+          </label>
+        </fieldset>
+
         <label className="flex items-center justify-between text-xs text-slate-300">
           <span>Live streaming (WebSocket)</span>
           <input

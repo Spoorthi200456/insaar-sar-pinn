@@ -1,4 +1,6 @@
+import { DEFAULT_METHOD } from "./types";
 import type {
+  AssessmentMethod,
   ExplainabilityResponse,
   HealthResponse,
   PredictionRequest,
@@ -41,11 +43,13 @@ export async function getHealth(): Promise<HealthResponse> {
 
 export async function predict(
   batch: TelemetryBatch,
-  rechargeEfficiencyThreshold: number
+  rechargeEfficiencyThreshold: number,
+  method: AssessmentMethod = DEFAULT_METHOD
 ): Promise<PredictionResponse> {
   const payload: PredictionRequest = {
     batch,
     recharge_efficiency_threshold: rechargeEfficiencyThreshold,
+    method,
   };
   const res = await fetch(`${API_BASE_URL}/api/v1/predict`, {
     method: "POST",
@@ -71,7 +75,11 @@ export async function explainStructure(
 }
 
 export interface TelemetryStreamHandle {
-  send: (batch: TelemetryBatch, rechargeEfficiencyThreshold: number) => void;
+  send: (
+    batch: TelemetryBatch,
+    rechargeEfficiencyThreshold: number,
+    method?: AssessmentMethod
+  ) => void;
   close: () => void;
 }
 
@@ -102,11 +110,12 @@ export function openTelemetryStream(
   };
 
   return {
-    send: (batch, rechargeEfficiencyThreshold) => {
+    send: (batch, rechargeEfficiencyThreshold, method = DEFAULT_METHOD) => {
       if (ws.readyState !== WebSocket.OPEN) return;
       const payload: PredictionRequest = {
         batch,
         recharge_efficiency_threshold: rechargeEfficiencyThreshold,
+        method,
       };
       ws.send(JSON.stringify(payload));
     },
