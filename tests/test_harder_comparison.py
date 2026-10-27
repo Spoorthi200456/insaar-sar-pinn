@@ -174,3 +174,67 @@ def test_comparison_rule_needs_one_metric_and_no_reverse_win():
         run((0.8, 0.79), (0.8, 0.8)) for _ in range(2)
     ]
     assert not HC.overall_clearly_better(runs, "B", "C")["clearly_better"]
+
+
+# --------------------------------------------------------------------------- #
+# The pre-registered outcome (the run recorded in results.json)
+# --------------------------------------------------------------------------- #
+
+RESULTS = Path("experiments/harder_comparison/results.json")
+
+
+def test_recorded_verdict_follows_from_the_recorded_per_seed_numbers():
+    """The summary in results.json is what the pre-registered rules give."""
+    import json
+
+    res = json.loads(RESULTS.read_text(encoding="utf-8"))
+    recomputed = HC.summarise(res["runs"])
+    assert recomputed["B_vs_C"]["clearly_better"] is True
+    assert recomputed["C_vs_B"]["clearly_better"] is False
+    assert [recomputed[m]["passes"] for m in ("A", "B", "C")] == [False, False, False]
+    assert recomputed == res["summary"]
+
+
+@pytest.fixture(scope="module")
+def c_protocol():
+    return HC.c_only()
+
+
+@pytest.mark.slow
+def test_c_full_protocol_reproduces_the_recorded_numbers(c_protocol):
+    import json
+
+    rec = json.loads(RESULTS.read_text(encoding="utf-8"))["summary"]["C"]
+    got = c_protocol["summary"]["C"]
+    for metric in ("rho_amount", "auroc_now"):
+        assert got[metric]["per_seed"] == pytest.approx(rec[metric]["per_seed"], abs=1e-9)
+
+
+@pytest.mark.slow
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "Review 5, pre-registered harder comparison: C misses the ranking mark. "
+        "Mean rho_amount 0.528 (sd 0.048, min 0.446) < 0.70 over seeds 0-4; "
+        "AUROC_now 0.903 >= 0.85 passes. C's constant amplitude cannot follow "
+        "clogging, thresholds, pumping or per-structure recession times."
+    ),
+)
+def test_c_meets_pass_marks_on_the_harder_simulator(c_protocol):
+    s = c_protocol["summary"]["C"]
+    assert s["rho_amount"]["mean"] >= HC.PASS_RHO and s["auroc_now"]["mean"] >= HC.PASS_AUROC
+
+
+@pytest.mark.slow
+@pytest.mark.comparison
+def test_seed0_a_and_b_reproduce_the_recorded_outcome():
+    """Opt-in (pytest -m comparison, ~18 min): A and B on seed 0 as recorded."""
+    import json
+
+    rec = next(r for r in json.loads(RESULTS.read_text(encoding="utf-8"))["runs"] if r["seed"] == 0)
+    got = HC.run_seed(0)
+    for m in ("A", "B", "C"):
+        for metric in ("rho_amount", "auroc_now"):
+            assert got[m][metric] == pytest.approx(rec[m][metric], abs=0.02)
+    assert got["A"]["rho_amount"] < HC.PASS_RHO and got["A"]["auroc_now"] < HC.PASS_AUROC
+    assert got["B"]["rho_amount"] >= got["C"]["rho_amount"] + HC.CLEARLY_BETTER_DIFF

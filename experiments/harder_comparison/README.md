@@ -193,3 +193,117 @@ review-4 oracle does not exist.
     (a mark C misses becomes `xfail(strict=True)` with the numbers);
   - an opt-in (`-m comparison`) test re-running A and B on seed 0 and asserting their
     outcome the same way.
+
+---
+
+## Results (one run of the protocol; commits `4c0384e` protocol, `2403497` code)
+
+Files:
+- `results.json`: per seed, per method, summary;
+- `results.csv`: per test structure.
+
+Run details:
+- N = 160 per seed gave 30–32 test structures in every seed, so no N raise was needed.
+  Test structures per seed were 12–14 working, 6–11 failed, 9–12 clogging and 7–14
+  pumped.
+- The late window held 18–23 intervals.
+- Runtime about 107 min on CPU:
+  - A's training: 3–8 min per seed;
+  - B: 9–33 min per seed;
+  - C: 0.3–1.1 s per seed.
+
+### Headline metrics (mean ± sd (min) over seeds 0–4)
+
+| method | ρ_amount | AUROC_now | pass mark (ρ ≥ 0.70 and AUROC ≥ 0.85) |
+|---|---|---|---|
+| A trained network | 0.209 ± 0.175 (−0.076) | 0.567 ± 0.129 (0.397) | **FAIL** (both) |
+| B per-structure fitting | **0.663 ± 0.057** (0.569) | **0.954 ± 0.032** (0.907) | **FAIL**: ρ below 0.70; AUROC passes |
+| C least squares, no network | 0.528 ± 0.048 (0.446) | 0.903 ± 0.049 (0.866) | **FAIL**: ρ below 0.70; AUROC passes |
+
+Per seed:
+
+| seed | ρ_amount A / B / C | AUROC_now A / B / C |
+|---|---|---|
+| 0 | 0.20 / 0.71 / 0.57 | 0.47 / 0.91 / 0.87 |
+| 1 | 0.40 / 0.65 / 0.53 | 0.66 / 0.96 / 0.88 |
+| 2 | 0.26 / 0.70 / 0.56 | 0.71 / 0.995 / 0.986 |
+| 3 | −0.08 / 0.57 / 0.45 | 0.40 / 0.96 / 0.91 |
+| 4 | 0.26 / 0.68 / 0.54 | 0.60 / 0.95 / 0.88 |
+
+### Comparison rule (as pre-registered)
+
+| comparison | ρ_amount: mean diff, seeds won | AUROC_now: mean diff, seeds won | clearly better? |
+|---|---|---|---|
+| **B vs C** | **+0.135, 5 of 5** | **+0.051, 5 of 5** | **YES** (on both metrics) |
+| C vs B | −0.135, 0 of 5 | −0.051, 0 of 5 | no |
+| A vs C | −0.319, 0 of 5 | −0.335, 0 of 5 | no |
+| B vs A | +0.454, 5 of 5 | +0.387, 5 of 5 | yes |
+
+**Verdict: B is clearly better than C on this simulator.** B fits the physics-informed
+network to each structure's own data. It beat C in every seed, on both headline
+metrics. So where structures differ in the ways listed in the protocol, the neural network
+**is** useful for this part of the problem. In review 4, where the world was C's own
+model, it was not.
+
+**But no method passes the pre-registered marks.**
+- B detects failing structures well (AUROC 0.95).
+- B misses the ranking mark: ρ 0.66 against 0.70.
+- C misses the ranking mark by more: ρ 0.53.
+- A, the trained network applied unchanged, fails both again. That is the third
+  independent test in which it is close to chance on unseen structures.
+
+### Secondary results (no pass mark; mean over seeds)
+
+| | A | B | C |
+|---|---|---|---|
+| AUROC_now, clogging vs working | 0.61 | **0.95** | 0.88 |
+| AUROC_now, failed vs working | 0.51 | 0.95 | 0.93 |
+| ρ of now score vs true late-window recharge | 0.21 | 0.66 | 0.60 |
+| ρ_amount within pumped structures (7–14 per seed) | 0.15 | 0.67 | 0.58 |
+| ρ_amount within unpumped structures | 0.22 | 0.74 | 0.58 |
+
+Other measurements:
+- C's fitted regional τ: 45–63 days. The structures' true τ ranges over 30–150 days.
+- B lowered each structure's own loss to 36–41 % of its starting value (median per
+  seed).
+
+What the secondary numbers say:
+- C separates structures that failed **from the start** almost as well as B (0.93 vs
+  0.95).
+- B's detection advantage comes mainly from **gradually clogging** structures
+  (0.95 vs 0.88). C's single constant amplitude averages the good early record with the
+  clogged late record. B's time-varying recharge can follow the decline.
+- On ranking, B is ahead of C in both pumped and unpumped subsets.
+
+### Limitations: read before drawing conclusions
+
+1. **I designed this simulator knowing what C cannot represent**: that was its stated
+   purpose. It favours a flexible method by construction, just as review 4's simulator
+   favoured C. The truth for real structures is somewhere in between and unknown until
+   real data is used.
+2. **B's network does not contain the simulator's processes either.** It has no pond
+   bucket, no pumping term and no per-structure recession time. Its advantage comes from
+   flexibility, not from matching physics. Its ranking is still short of the mark.
+3. **Cost.** B took 9–33 min per seed, roughly 20–60 s per structure, against about 1 s
+   for C per seed.
+4. **The API's "neural_experimental" option is method A**, the trained network applied
+   unchanged. It is **not** method B. A failed here too. Method B is not available in the
+   API.
+5. The model's area convention for its regularisers differs from the simulator's A_cell
+   (protocol, "Known mismatch"; OQ9).
+6. Synthetic data, an alluvial aquifer with signal above noise, and no absolute recharge
+   from InSAR alone. All of this still holds for every method.
+
+### Tests
+
+`tests/test_harder_comparison.py`:
+- simulator unit tests (12);
+- `test_recorded_verdict_follows_from_the_recorded_per_seed_numbers`: re-applies the
+  rules to the recorded per-seed numbers;
+- slow `test_c_full_protocol_reproduces_the_recorded_numbers`: re-runs C on all 5 seeds
+  in seconds; passes;
+- slow `test_c_meets_pass_marks_on_the_harder_simulator`: **xfail(strict=True)** with
+  C's numbers;
+- opt-in `test_seed0_a_and_b_reproduce_the_recorded_outcome` (`pytest -m comparison`,
+  about 18 min): re-runs A, B and C on seed 0. It checks the recorded values (± 0.02),
+  that A is below both marks, and that B's ρ ≥ C's + 0.05.

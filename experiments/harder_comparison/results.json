@@ -1,0 +1,579 @@
+{
+  "protocol": "experiments/harder_comparison/README.md",
+  "n_raise_steps": 0,
+  "summary": {
+    "A": {
+      "rho_amount": {
+        "mean": 0.20902517949236527,
+        "sd": 0.17520156912786106,
+        "min": -0.07587976539589442,
+        "per_seed": [
+          0.2001466275659824,
+          0.39919354838709686,
+          0.26140155728587317,
+          -0.07587976539589442,
+          0.2602639296187683
+        ]
+      },
+      "auroc_now": {
+        "mean": 0.5673925197609408,
+        "sd": 0.1294540120842837,
+        "min": 0.3968253968253968,
+        "per_seed": [
+          0.47368421052631576,
+          0.6581196581196581,
+          0.7083333333333334,
+          0.3968253968253968,
+          0.6
+        ]
+      },
+      "auroc_now_clogging_vs_working": {
+        "mean": 0.6062041662041662,
+        "sd": 0.12977129302111426,
+        "min": 0.461038961038961,
+        "per_seed": [
+          0.46923076923076923,
+          0.7051282051282052,
+          0.7196969696969697,
+          0.461038961038961,
+          0.6759259259259259
+        ]
+      },
+      "auroc_now_failed_vs_working": {
+        "mean": 0.5134016776873921,
+        "sd": 0.14407721832888634,
+        "min": 0.29591836734693877,
+        "per_seed": [
+          0.47863247863247865,
+          0.5641025641025641,
+          0.6904761904761905,
+          0.29591836734693877,
+          0.5378787878787878
+        ]
+      },
+      "rho_now_vs_true_late": {
+        "mean": 0.2045189098998888,
+        "sd": 0.2388315800358909,
+        "min": -0.18951612903225803,
+        "per_seed": [
+          0.1440615835777126,
+          0.340725806451613,
+          0.3592880978865406,
+          -0.18951612903225803,
+          0.36803519061583573
+        ]
+      },
+      "rho_amount_pumped": {
+        "mean": 0.14550449550449557,
+        "sd": 0.28147277298030027,
+        "min": -0.2857142857142857,
+        "per_seed": [
+          0.03571428571428572,
+          0.21428571428571433,
+          0.41818181818181827,
+          -0.2857142857142857,
+          0.3450549450549451
+        ]
+      },
+      "rho_amount_unpumped": {
+        "mean": 0.21709853622843256,
+        "sd": 0.16163457142411203,
+        "min": 0.07543859649122807,
+        "per_seed": [
+          0.2030769230769231,
+          0.4869565217391304,
+          0.1105263157894737,
+          0.07543859649122807,
+          0.20949432404540763
+        ]
+      },
+      "passes": false
+    },
+    "B": {
+      "rho_amount": {
+        "mean": 0.6632634745677015,
+        "sd": 0.05726146981659727,
+        "min": 0.5685483870967741,
+        "per_seed": [
+          0.7096774193548386,
+          0.6544354838709678,
+          0.703670745272525,
+          0.5685483870967741,
+          0.6799853372434017
+        ]
+      },
+      "auroc_now": {
+        "mean": 0.953967075809181,
+        "sd": 0.03161535464561869,
+        "min": 0.9068825910931174,
+        "per_seed": [
+          0.9068825910931174,
+          0.9572649572649573,
+          0.9953703703703703,
+          0.9603174603174603,
+          0.95
+        ]
+      },
+      "auroc_now_clogging_vs_working": {
+        "mean": 0.9536367336367336,
+        "sd": 0.03707913413880848,
+        "min": 0.9076923076923077,
+        "per_seed": [
+          0.9076923076923077,
+          0.9551282051282052,
+          0.9924242424242424,
+          0.987012987012987,
+          0.9259259259259259
+        ]
+      },
+      "auroc_now_failed_vs_working": {
+        "mean": 0.9511171368314226,
+        "sd": 0.03857783055661238,
+        "min": 0.905982905982906,
+        "per_seed": [
+          0.905982905982906,
+          0.9615384615384616,
+          1.0,
+          0.9183673469387755,
+          0.9696969696969697
+        ]
+      },
+      "rho_now_vs_true_late": {
+        "mean": 0.6581937000707856,
+        "sd": 0.05923498774761056,
+        "min": 0.5909090909090909,
+        "per_seed": [
+          0.5909090909090909,
+          0.6600806451612903,
+          0.7503893214682981,
+          0.62683284457478,
+          0.6627565982404692
+        ]
+      },
+      "rho_amount_pumped": {
+        "mean": 0.6703296703296704,
+        "sd": 0.20426299905040346,
+        "min": 0.410989010989011,
+        "per_seed": [
+          0.7500000000000002,
+          0.9642857142857145,
+          0.6000000000000001,
+          0.6263736263736264,
+          0.410989010989011
+        ]
+      },
+      "rho_amount_unpumped": {
+        "mean": 0.736876799514032,
+        "sd": 0.13774803420350584,
+        "min": 0.5736842105263157,
+        "per_seed": [
+          0.8092307692307691,
+          0.6678260869565217,
+          0.7017543859649124,
+          0.5736842105263157,
+          0.9318885448916409
+        ]
+      },
+      "passes": false
+    },
+    "C": {
+      "rho_amount": {
+        "mean": 0.5279401355040955,
+        "sd": 0.04817787262051194,
+        "min": 0.44574780058651026,
+        "per_seed": [
+          0.5670821114369501,
+          0.5338709677419355,
+          0.5581757508342603,
+          0.44574780058651026,
+          0.5348240469208211
+        ]
+      },
+      "auroc_now": {
+        "mean": 0.9025009639483323,
+        "sd": 0.04884274038813718,
+        "min": 0.8663967611336032,
+        "per_seed": [
+          0.8663967611336032,
+          0.8760683760683761,
+          0.9861111111111112,
+          0.9047619047619048,
+          0.8791666666666667
+        ]
+      },
+      "auroc_now_clogging_vs_working": {
+        "mean": 0.8766625966625966,
+        "sd": 0.06876520980937008,
+        "min": 0.8148148148148148,
+        "per_seed": [
+          0.823076923076923,
+          0.8525641025641025,
+          0.9772727272727273,
+          0.9155844155844156,
+          0.8148148148148148
+        ]
+      },
+      "auroc_now_failed_vs_working": {
+        "mean": 0.9314360242931672,
+        "sd": 0.04172792499749888,
+        "min": 0.8877551020408163,
+        "per_seed": [
+          0.9145299145299145,
+          0.9230769230769231,
+          1.0,
+          0.8877551020408163,
+          0.9318181818181818
+        ]
+      },
+      "rho_now_vs_true_late": {
+        "mean": 0.5965279603599959,
+        "sd": 0.05643560611402022,
+        "min": 0.5381231671554252,
+        "per_seed": [
+          0.6037390029325512,
+          0.6129032258064516,
+          0.6787541713014461,
+          0.5491202346041054,
+          0.5381231671554252
+        ]
+      },
+      "rho_amount_pumped": {
+        "mean": 0.5754845154845156,
+        "sd": 0.24080045483147844,
+        "min": 0.2967032967032967,
+        "per_seed": [
+          0.7500000000000002,
+          0.8928571428571429,
+          0.48181818181818187,
+          0.45604395604395603,
+          0.2967032967032967
+        ]
+      },
+      "rho_amount_unpumped": {
+        "mean": 0.580208766062313,
+        "sd": 0.10390730822606271,
+        "min": 0.487719298245614,
+        "per_seed": [
+          0.5407692307692307,
+          0.528695652173913,
+          0.5894736842105263,
+          0.487719298245614,
+          0.7543859649122806
+        ]
+      },
+      "passes": false
+    },
+    "B_vs_C": {
+      "per_metric": {
+        "rho_amount": {
+          "mean_difference": 0.13532333906360605,
+          "seeds_won": 5,
+          "clearly_better": true
+        },
+        "auroc_now": {
+          "mean_difference": 0.05146611186084871,
+          "seeds_won": 5,
+          "clearly_better": true
+        }
+      },
+      "clearly_better": true
+    },
+    "C_vs_B": {
+      "per_metric": {
+        "rho_amount": {
+          "mean_difference": -0.13532333906360605,
+          "seeds_won": 0,
+          "clearly_better": false
+        },
+        "auroc_now": {
+          "mean_difference": -0.05146611186084871,
+          "seeds_won": 0,
+          "clearly_better": false
+        }
+      },
+      "clearly_better": false
+    },
+    "A_vs_C": {
+      "per_metric": {
+        "rho_amount": {
+          "mean_difference": -0.3189149560117302,
+          "seeds_won": 0,
+          "clearly_better": false
+        },
+        "auroc_now": {
+          "mean_difference": -0.3351084441873915,
+          "seeds_won": 0,
+          "clearly_better": false
+        }
+      },
+      "clearly_better": false
+    },
+    "B_vs_A": {
+      "per_metric": {
+        "rho_amount": {
+          "mean_difference": 0.45423829507533625,
+          "seeds_won": 5,
+          "clearly_better": true
+        },
+        "auroc_now": {
+          "mean_difference": 0.3865745560482402,
+          "seeds_won": 5,
+          "clearly_better": true
+        }
+      },
+      "clearly_better": true
+    }
+  },
+  "runs": [
+    {
+      "seed": 0,
+      "n_structures": 160,
+      "n_train": 96,
+      "n_validation": 32,
+      "n_test": 32,
+      "n_test_by_kind": {
+        "working": 13,
+        "failed": 9,
+        "clogging": 10
+      },
+      "n_test_pumped": 7,
+      "late_steps": 20,
+      "seconds": {
+        "C": 0.3,
+        "A_train": 165.1,
+        "B": 901.3,
+        "total": 1067.8
+      },
+      "C_tau_days": 44.6683592150963,
+      "A_best_epoch": 529,
+      "B_median_loss_ratio_after_over_before": 0.39250299643671926,
+      "C": {
+        "rho_amount": 0.5670821114369501,
+        "auroc_now": 0.8663967611336032,
+        "auroc_now_clogging_vs_working": 0.823076923076923,
+        "auroc_now_failed_vs_working": 0.9145299145299145,
+        "rho_now_vs_true_late": 0.6037390029325512,
+        "rho_amount_pumped": 0.7500000000000002,
+        "rho_amount_unpumped": 0.5407692307692307
+      },
+      "A": {
+        "rho_amount": 0.2001466275659824,
+        "auroc_now": 0.47368421052631576,
+        "auroc_now_clogging_vs_working": 0.46923076923076923,
+        "auroc_now_failed_vs_working": 0.47863247863247865,
+        "rho_now_vs_true_late": 0.1440615835777126,
+        "rho_amount_pumped": 0.03571428571428572,
+        "rho_amount_unpumped": 0.2030769230769231
+      },
+      "B": {
+        "rho_amount": 0.7096774193548386,
+        "auroc_now": 0.9068825910931174,
+        "auroc_now_clogging_vs_working": 0.9076923076923077,
+        "auroc_now_failed_vs_working": 0.905982905982906,
+        "rho_now_vs_true_late": 0.5909090909090909,
+        "rho_amount_pumped": 0.7500000000000002,
+        "rho_amount_unpumped": 0.8092307692307691
+      }
+    },
+    {
+      "seed": 1,
+      "n_structures": 160,
+      "n_train": 95,
+      "n_validation": 34,
+      "n_test": 31,
+      "n_test_by_kind": {
+        "working": 13,
+        "failed": 6,
+        "clogging": 12
+      },
+      "n_test_pumped": 7,
+      "late_steps": 18,
+      "seconds": {
+        "C": 0.4,
+        "A_train": 249.7,
+        "B": 1006.1,
+        "total": 1257.6
+      },
+      "C_tau_days": 56.23413251903491,
+      "A_best_epoch": 239,
+      "B_median_loss_ratio_after_over_before": 0.41253994650132036,
+      "C": {
+        "rho_amount": 0.5338709677419355,
+        "auroc_now": 0.8760683760683761,
+        "auroc_now_clogging_vs_working": 0.8525641025641025,
+        "auroc_now_failed_vs_working": 0.9230769230769231,
+        "rho_now_vs_true_late": 0.6129032258064516,
+        "rho_amount_pumped": 0.8928571428571429,
+        "rho_amount_unpumped": 0.528695652173913
+      },
+      "A": {
+        "rho_amount": 0.39919354838709686,
+        "auroc_now": 0.6581196581196581,
+        "auroc_now_clogging_vs_working": 0.7051282051282052,
+        "auroc_now_failed_vs_working": 0.5641025641025641,
+        "rho_now_vs_true_late": 0.340725806451613,
+        "rho_amount_pumped": 0.21428571428571433,
+        "rho_amount_unpumped": 0.4869565217391304
+      },
+      "B": {
+        "rho_amount": 0.6544354838709678,
+        "auroc_now": 0.9572649572649573,
+        "auroc_now_clogging_vs_working": 0.9551282051282052,
+        "auroc_now_failed_vs_working": 0.9615384615384616,
+        "rho_now_vs_true_late": 0.6600806451612903,
+        "rho_amount_pumped": 0.9642857142857145,
+        "rho_amount_unpumped": 0.6678260869565217
+      }
+    },
+    {
+      "seed": 2,
+      "n_structures": 160,
+      "n_train": 96,
+      "n_validation": 34,
+      "n_test": 30,
+      "n_test_by_kind": {
+        "working": 12,
+        "failed": 7,
+        "clogging": 11
+      },
+      "n_test_pumped": 11,
+      "late_steps": 18,
+      "seconds": {
+        "C": 1.1,
+        "A_train": 470.1,
+        "B": 1985.9,
+        "total": 2460.1
+      },
+      "C_tau_days": 50.11872336272725,
+      "A_best_epoch": 599,
+      "B_median_loss_ratio_after_over_before": 0.39769101802302986,
+      "C": {
+        "rho_amount": 0.5581757508342603,
+        "auroc_now": 0.9861111111111112,
+        "auroc_now_clogging_vs_working": 0.9772727272727273,
+        "auroc_now_failed_vs_working": 1.0,
+        "rho_now_vs_true_late": 0.6787541713014461,
+        "rho_amount_pumped": 0.48181818181818187,
+        "rho_amount_unpumped": 0.5894736842105263
+      },
+      "A": {
+        "rho_amount": 0.26140155728587317,
+        "auroc_now": 0.7083333333333334,
+        "auroc_now_clogging_vs_working": 0.7196969696969697,
+        "auroc_now_failed_vs_working": 0.6904761904761905,
+        "rho_now_vs_true_late": 0.3592880978865406,
+        "rho_amount_pumped": 0.41818181818181827,
+        "rho_amount_unpumped": 0.1105263157894737
+      },
+      "B": {
+        "rho_amount": 0.703670745272525,
+        "auroc_now": 0.9953703703703703,
+        "auroc_now_clogging_vs_working": 0.9924242424242424,
+        "auroc_now_failed_vs_working": 1.0,
+        "rho_now_vs_true_late": 0.7503893214682981,
+        "rho_amount_pumped": 0.6000000000000001,
+        "rho_amount_unpumped": 0.7017543859649124
+      }
+    },
+    {
+      "seed": 3,
+      "n_structures": 160,
+      "n_train": 95,
+      "n_validation": 33,
+      "n_test": 32,
+      "n_test_by_kind": {
+        "working": 14,
+        "failed": 7,
+        "clogging": 11
+      },
+      "n_test_pumped": 13,
+      "late_steps": 23,
+      "seconds": {
+        "C": 1.1,
+        "A_train": 379.8,
+        "B": 545.6,
+        "total": 929.5
+      },
+      "C_tau_days": 63.09573444801933,
+      "A_best_epoch": 289,
+      "B_median_loss_ratio_after_over_before": 0.35546865544091405,
+      "C": {
+        "rho_amount": 0.44574780058651026,
+        "auroc_now": 0.9047619047619048,
+        "auroc_now_clogging_vs_working": 0.9155844155844156,
+        "auroc_now_failed_vs_working": 0.8877551020408163,
+        "rho_now_vs_true_late": 0.5491202346041054,
+        "rho_amount_pumped": 0.45604395604395603,
+        "rho_amount_unpumped": 0.487719298245614
+      },
+      "A": {
+        "rho_amount": -0.07587976539589442,
+        "auroc_now": 0.3968253968253968,
+        "auroc_now_clogging_vs_working": 0.461038961038961,
+        "auroc_now_failed_vs_working": 0.29591836734693877,
+        "rho_now_vs_true_late": -0.18951612903225803,
+        "rho_amount_pumped": -0.2857142857142857,
+        "rho_amount_unpumped": 0.07543859649122807
+      },
+      "B": {
+        "rho_amount": 0.5685483870967741,
+        "auroc_now": 0.9603174603174603,
+        "auroc_now_clogging_vs_working": 0.987012987012987,
+        "auroc_now_failed_vs_working": 0.9183673469387755,
+        "rho_now_vs_true_late": 0.62683284457478,
+        "rho_amount_pumped": 0.6263736263736264,
+        "rho_amount_unpumped": 0.5736842105263157
+      }
+    },
+    {
+      "seed": 4,
+      "n_structures": 160,
+      "n_train": 96,
+      "n_validation": 32,
+      "n_test": 32,
+      "n_test_by_kind": {
+        "working": 12,
+        "failed": 11,
+        "clogging": 9
+      },
+      "n_test_pumped": 14,
+      "late_steps": 19,
+      "seconds": {
+        "C": 0.3,
+        "A_train": 165.0,
+        "B": 547.1,
+        "total": 713.5
+      },
+      "C_tau_days": 63.09573444801933,
+      "A_best_epoch": 319,
+      "B_median_loss_ratio_after_over_before": 0.3692536902043567,
+      "C": {
+        "rho_amount": 0.5348240469208211,
+        "auroc_now": 0.8791666666666667,
+        "auroc_now_clogging_vs_working": 0.8148148148148148,
+        "auroc_now_failed_vs_working": 0.9318181818181818,
+        "rho_now_vs_true_late": 0.5381231671554252,
+        "rho_amount_pumped": 0.2967032967032967,
+        "rho_amount_unpumped": 0.7543859649122806
+      },
+      "A": {
+        "rho_amount": 0.2602639296187683,
+        "auroc_now": 0.6,
+        "auroc_now_clogging_vs_working": 0.6759259259259259,
+        "auroc_now_failed_vs_working": 0.5378787878787878,
+        "rho_now_vs_true_late": 0.36803519061583573,
+        "rho_amount_pumped": 0.3450549450549451,
+        "rho_amount_unpumped": 0.20949432404540763
+      },
+      "B": {
+        "rho_amount": 0.6799853372434017,
+        "auroc_now": 0.95,
+        "auroc_now_clogging_vs_working": 0.9259259259259259,
+        "auroc_now_failed_vs_working": 0.9696969696969697,
+        "rho_now_vs_true_late": 0.6627565982404692,
+        "rho_amount_pumped": 0.410989010989011,
+        "rho_amount_unpumped": 0.9318885448916409
+      }
+    }
+  ]
+}
