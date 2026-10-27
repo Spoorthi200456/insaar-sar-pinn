@@ -20,6 +20,7 @@ marked "check against your edition".
 | [latent_drift.md](latent_drift.md) | Drift score against the training reference | 23 |
 | [ols_baseline.md](ols_baseline.md) | Method C: least squares on a linear-reservoir model | review 4 |
 | [test_time_fitting.md](test_time_fitting.md) | Method B: per-structure physics-informed fitting | review 4 |
+| [field_simulator.md](field_simulator.md) | The harder comparison's field-like simulator (not C's model) | review 5 |
 
 The governing equations used by the code are summarised in `CLAUDE.md` →
 "Governing physics"; these notes are the full derivations behind it.
